@@ -53,7 +53,7 @@ app.post('/api/labels', (req, res) => {
 
 app.post('/api/predict', (req, res) => {
   const { id } = req.body;
-  const pythonPath = path.join(__dirname, '../venv/bin/python');
+  const pythonPath = path.join(__dirname, '../.venv/bin/python');
   const scriptPath = path.join(__dirname, '../python/predict.py');
   const process = spawn(pythonPath, [scriptPath], { cwd: path.join(__dirname, '..') });
   let output = '';

@@ -271,9 +271,9 @@ cat << 'CONF' > data/config.json
 ]
 CONF
 
-python3 -m venv venv
-source venv/bin/activate
-pip install -r python/requirements.txt
+uv venv
+source .venv/bin/activate
+uv pip install -r python/requirements.txt
 python python/generate_dummy_audio.py
 python python/segmenter.py
 python python/extractor.py
@@ -400,9 +400,9 @@ app.post('/api/labels', (req, res) => {
 
 app.post('/api/predict', (req, res) => {
   const { id } = req.body;
-  const pythonPath = path.join(__dirname, '../venv/bin/python');
+  const pythonPath = path.join(__dirname, '../.venv/bin/python');
   const scriptPath = path.join(__dirname, '../python/predict.py');
-  const process = spawn(pythonPath, [scriptPath]);
+  const process = spawn(pythonPath, [scriptPath], { cwd: path.join(__dirname, '..') });
   let output = '';
   process.stdout.on('data', (data) => output += data.toString());
   process.on('close', (code) => {

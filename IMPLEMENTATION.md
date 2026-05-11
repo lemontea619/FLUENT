@@ -14,9 +14,9 @@
 
 ### Python 環境 (Module A, B, D)
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r python/requirements.txt
+uv venv
+source .venv/bin/activate
+uv pip install -r python/requirements.txt
 ```
 
 ### Node.js 環境 (Module C)
@@ -32,7 +32,7 @@ npm run build
 まず、`/data/raw_audio` ディレクトリに解析したい WAV ファイルを配置します。ダミー音声を用意する場合は以下のスクリプトを実行します。
 
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
 python python/generate_dummy_audio.py
 ```
 
@@ -63,7 +63,7 @@ npm run dev
 いくつかラベリングが完了したら、そのデータを使って MLP (多層パーセプトロン) を学習させます。
 
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
 python python/train.py
 ```
 学習中、Loss値がログ出力され、収束するとモデルが `data/model.pkl` に保存されます。
