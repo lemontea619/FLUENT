@@ -305,7 +305,7 @@ python python/train.py
 npm create vite@latest node -- --template vue
 cd node
 npm install
-npm install express socket.io cors multer concurrently socket.io-client axios
+npm install express cors multer concurrently axios
 npm install -D tailwindcss@3 postcss autoprefixer
 npx tailwindcss init -p
 
@@ -346,8 +346,6 @@ VITE
 
 cat << 'SERVER' > server.js
 import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
@@ -363,11 +361,6 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/data', express.static(DATA_DIR));
-
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: { origin: '*' }
-});
 
 app.get('/api/config', (req, res) => {
   const config = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'config.json'), 'utf8'));
@@ -418,7 +411,7 @@ app.post('/api/predict', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
 SERVER
