@@ -1,6 +1,4 @@
 import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
 import cors from 'cors';
 import fs from 'fs';
 import { readFile, writeFile, readdir } from 'fs/promises';
@@ -99,6 +97,6 @@ app.post('/api/predict', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
