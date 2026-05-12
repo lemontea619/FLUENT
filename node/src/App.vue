@@ -39,11 +39,19 @@
               <div v-if="field.type === 'slider'">
                 <input type="range" :min="field.min" :max="field.max" :step="field.step" v-model.number="currentLabels[index]" class="w-full">
               </div>
+
+              <div v-if="field.type === 'checkboxes'" class="space-y-2">
+                <div v-for="(opt, i) in field.options" :key="opt" class="flex items-center">
+                  <input type="checkbox" v-model="currentLabels[index][i]" :id="field.id + '-' + i" class="h-4 w-4 text-blue-600 border-gray-300 rounded">
+                  <label :for="field.id + '-' + i" class="ml-2 block text-sm text-gray-900">{{ opt }}</label>
+                </div>
+              </div>
             </div>
 
-            <div class="flex gap-4 pt-4">
-              <button type="submit" class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 shadow">Save Labels</button>
-              <button type="button" @click="predict" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700 shadow">AI Suggestion</button>
+            <div class="flex gap-4 pt-4 items-center">
+              <button type="submit" :disabled="isLoading" class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 shadow disabled:opacity-50">Save Labels</button>
+              <button type="button" @click="predict()" :disabled="isLoading" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700 shadow disabled:opacity-50">AI Suggestion</button>
+              <span v-if="isLoading" class="text-blue-600 font-medium ml-4">Loading...</span>
             </div>
           </form>
         </div>
@@ -56,6 +64,7 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
+const isLoading = ref(false)
 const config = ref([])
 const segments = ref([])
 const labelset = ref({ cols: 0, data: {} })
@@ -76,37 +85,58 @@ const initLabels = () => {
         return "#" + (1 << 24 | Math.round(r*255) << 16 | Math.round(g*255) << 8 | Math.round(b*255)).toString(16).slice(1);
       } else if (field.type === 'dropdown') {
         return Math.round(labelsData[flatIdx++] * (field.options.length - 1));
+      } else if (field.type === 'checkboxes') {
+        return Array.from({ length: field.options.length }, () => labelsData[flatIdx++] >= 0.5);
       } else {
         return labelsData[flatIdx++];
       }
     });
   } else {
-    currentLabels.value = config.value.map(field => field.type === 'color-picker' ? '#000000' : field.type === 'slider' ? field.min || 0 : null)
+    currentLabels.value = config.value.map(field => {
+      if (field.type === 'color-picker') return '#000000';
+      if (field.type === 'slider') return field.min || 0;
+      if (field.type === 'checkboxes') return Array(field.options.length).fill(false);
+      return null;
+    });
   }
 }
 
-const selectSegment = (segment) => { currentSegment.value = segment; initLabels() }
 const hasLabels = (segment) => !!labelset.value.data[segment]
-
-const saveLabels = async () => {
-  let flatLabels = []
-  config.value.forEach((field, i) => {
-    let val = currentLabels.value[i]
-    if (field.type === 'color-picker') {
-      const rgb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(val)
-      flatLabels.push(parseInt(rgb[1], 16)/255, parseInt(rgb[2], 16)/255, parseInt(rgb[3], 16)/255)
-    } else if (field.type === 'dropdown') {
-      flatLabels.push(val / (field.options.length - 1))
-    } else {
-      flatLabels.push(val)
-    }
-  })
-  await axios.post('/api/labels', { id: currentSegment.value, labels: flatLabels, cols: flatLabels.length })
-  labelset.value.data[currentSegment.value] = flatLabels
+const selectSegment = async (segment) => {
+  currentSegment.value = segment;
+  initLabels();
+  if (!hasLabels(segment)) {
+    await predict(true);
+  }
 }
 
-const predict = async () => {
+const saveLabels = async () => {
   try {
+    isLoading.value = true
+    let flatLabels = []
+    config.value.forEach((field, i) => {
+      let val = currentLabels.value[i]
+      if (field.type === 'color-picker') {
+        const rgb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(val)
+        flatLabels.push(parseInt(rgb[1], 16)/255, parseInt(rgb[2], 16)/255, parseInt(rgb[3], 16)/255)
+      } else if (field.type === 'dropdown') {
+        flatLabels.push(val / (field.options.length - 1))
+      } else if (field.type === 'checkboxes') {
+        val.forEach(v => flatLabels.push(v ? 1.0 : 0.0))
+      } else {
+        flatLabels.push(val)
+      }
+    })
+    await axios.post('/api/labels', { id: currentSegment.value, labels: flatLabels, cols: flatLabels.length })
+    labelset.value.data[currentSegment.value] = flatLabels
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const predict = async (silent = false) => {
+  try {
+    if (!silent) isLoading.value = true
     const res = await axios.post('/api/predict', { id: currentSegment.value })
     if (res.data.prediction) {
        let flatIdx = 0
@@ -116,12 +146,18 @@ const predict = async () => {
            currentLabels.value[i] = "#" + (1 << 24 | Math.round(r*255) << 16 | Math.round(g*255) << 8 | Math.round(b*255)).toString(16).slice(1)
          } else if (field.type === 'dropdown') {
            currentLabels.value[i] = Math.round(res.data.prediction[flatIdx++] * (field.options.length - 1))
+         } else if (field.type === 'checkboxes') {
+           currentLabels.value[i] = Array.from({ length: field.options.length }, () => res.data.prediction[flatIdx++] >= 0.5)
          } else {
            currentLabels.value[i] = res.data.prediction[flatIdx++]
          }
        })
     }
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    if (!silent) console.error(e)
+  } finally {
+    if (!silent) isLoading.value = false
+  }
 }
 
 onMounted(async () => {

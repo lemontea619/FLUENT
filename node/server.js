@@ -63,8 +63,14 @@ app.post('/api/labels', async (req, res) => {
     await fs.access(labelsetPath, constants.F_OK);
     const data = await fs.readFile(labelsetPath, 'utf8');
     labelset = JSON.parse(data);
+
+    // Backup existing file
+    const backupDir = path.join(DATA_DIR, 'backups');
+    await fs.mkdir(backupDir, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await fs.writeFile(path.join(backupDir, `labelset-${timestamp}.json`), data);
   } catch (err) {
-    // file does not exist, use default
+    // file does not exist or invalid, use default
   }
   labelset.cols = cols || labelset.cols;
   labelset.data[id] = labels;
