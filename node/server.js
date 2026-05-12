@@ -11,15 +11,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, '../data');
 
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : 'http://localhost:5173';
+
 const app = express();
-app.use(cors());
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
 
 app.use('/data', express.static(DATA_DIR));
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: '*' }
+  cors: { origin: ALLOWED_ORIGINS }
 });
 
 app.get('/api/config', (req, res) => {
