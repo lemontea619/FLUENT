@@ -7,19 +7,21 @@ import sys
 import joblib
 import librosa
 import numpy as np
+import soundfile as sf
 from sklearn.preprocessing import StandardScaler
 
 
 def extract_features(file_path: str) -> np.ndarray:
     y, sr = librosa.load(file_path, sr=None)
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    n_fft = min(2048, len(y))
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=n_fft)
     mfcc_mean = np.mean(mfcc, axis=1)[1:]
-    S, _ = librosa.magphase(librosa.stft(y))
+    S, _ = librosa.magphase(librosa.stft(y, n_fft=n_fft))
     centroid = np.mean(librosa.feature.spectral_centroid(S=S))
-    flatness = np.mean(librosa.feature.spectral_flatness(y=y))
+    flatness = np.mean(librosa.feature.spectral_flatness(y=y, n_fft=n_fft))
     rolloff = np.mean(librosa.feature.spectral_rolloff(S=S, sr=sr))
-    bandwidth = np.mean(librosa.feature.spectral_bandwidth(y=y, sr=sr))
-    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+    bandwidth = np.mean(librosa.feature.spectral_bandwidth(y=y, sr=sr, n_fft=n_fft))
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr, n_fft=n_fft)
     tempo_tuple = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr)
     tempo = (
         tempo_tuple[0][0] if isinstance(tempo_tuple[0], np.ndarray) else tempo_tuple[0]
@@ -39,6 +41,9 @@ def extract_features(file_path: str) -> np.ndarray:
     return features
 
 
+MIN_SAMPLES = 2048  # ~93ms at 22050 Hz
+
+
 def create_dataset(input_dir: str, output_json: str) -> None:
     audio_files = sorted(glob.glob(os.path.join(input_dir, "*.wav")))
     feature_dict = {}
@@ -46,6 +51,10 @@ def create_dataset(input_dir: str, output_json: str) -> None:
     file_ids = []
     for file_path in audio_files:
         file_id = os.path.basename(file_path).split(".")[0]
+        info = sf.info(file_path)
+        if info.frames < MIN_SAMPLES:
+            print(f"Skip {file_id}: too short ({info.frames} samples)", file=sys.stderr)
+            continue
         features = extract_features(file_path)
         all_features.append(features)
         file_ids.append(file_id)
