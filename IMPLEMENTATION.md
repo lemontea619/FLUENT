@@ -65,6 +65,15 @@ UI の `Model Training` セクションから：
 
 ## 3. データ契約（A-MAP スキーマ）
 
+### A-MAP とは
+
+A-MAP は [FluCoMa（Fluid Corpus Manipulation）](https://www.flucoma.org/) のデータセット形式に準拠したデータ交換規約。
+FluCoMa は Max/MSP・SuperCollider・Pure Data 向けの音響コーパス操作ツールキットであり、
+その `fluid.dataset~` オブジェクトが以下の JSON を標準入出力として扱う。
+
+FLUENT が生成する `dataset.json` / `labelset.json` はこの形式に準拠しているため、
+FluCoMa パッチへそのまま渡せる互換性を持つ。
+
 ```json
 // dataset.json（X: 物理特徴量）
 { "cols": 26, "data": { "example-001": [...] } }
