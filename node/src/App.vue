@@ -18,9 +18,9 @@
         </div>
 
         <div v-if="currentSegment" class="mt-6 border-t pt-6">
-          <div class="flex justify-between items-center mb-4">
+          <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-medium text-gray-800">Now Labeling: {{ currentSegment }}</h3>
-            <audio :src="`/data/segments/${currentSegment}.wav`" controls autoplay class="h-10"></audio>
+            <audio controls :src="'/data/segments/' + currentSegment + '.wav'" class="h-10"></audio>
           </div>
           <form @submit.prevent="saveLabels" class="space-y-6">
             <div v-for="(field, index) in config" :key="field.id" class="p-4 bg-gray-50 rounded border">
@@ -68,18 +68,18 @@ const fetchLabels = async () => labelset.value = (await axios.get('/api/labels')
 
 const initLabels = () => {
   if (currentSegment.value && labelset.value.data[currentSegment.value]) {
-    let flatIdx = 0
-    const savedData = labelset.value.data[currentSegment.value]
-    currentLabels.value = config.value.map((field) => {
+    let flatIdx = 0;
+    const labelsData = labelset.value.data[currentSegment.value];
+    currentLabels.value = config.value.map(field => {
       if (field.type === 'color-picker') {
-        const r = savedData[flatIdx++], g = savedData[flatIdx++], b = savedData[flatIdx++]
-        return "#" + (1 << 24 | Math.round(r*255) << 16 | Math.round(g*255) << 8 | Math.round(b*255)).toString(16).slice(1)
+        const r = labelsData[flatIdx++], g = labelsData[flatIdx++], b = labelsData[flatIdx++];
+        return "#" + (1 << 24 | Math.round(r*255) << 16 | Math.round(g*255) << 8 | Math.round(b*255)).toString(16).slice(1);
       } else if (field.type === 'dropdown') {
-        return Math.round(savedData[flatIdx++] * (field.options.length - 1))
+        return Math.round(labelsData[flatIdx++] * (field.options.length - 1));
       } else {
-        return savedData[flatIdx++]
+        return labelsData[flatIdx++];
       }
-    })
+    });
   } else {
     currentLabels.value = config.value.map(field => field.type === 'color-picker' ? '#000000' : field.type === 'slider' ? field.min || 0 : null)
   }

@@ -3,6 +3,8 @@ import glob
 import librosa
 import soundfile as sf
 import numpy as np
+import argparse
+import sys
 
 def segment_audio(input_dir, output_dir):
     os.makedirs(output_dir, exist_ok=True)
@@ -31,10 +33,16 @@ def segment_audio(input_dir, output_dir):
                     out_path = os.path.join(output_dir, f"example-{segment_id:03d}.wav")
                     sf.write(out_path, segment_y, sr)
                     segment_id += 1
-        except Exception:
+        except Exception as e:
+            print(f"Error segmenting {file_path}: {e}", file=sys.stderr)
             out_path = os.path.join(output_dir, f"example-{segment_id:03d}.wav")
             sf.write(out_path, y, sr)
             segment_id += 1
 
 if __name__ == "__main__":
-    segment_audio('data/raw_audio', 'data/segments')
+    parser = argparse.ArgumentParser(description="Segment audio files")
+    parser.add_argument('--input', type=str, default='data/raw_audio', help='Input directory with WAV files')
+    parser.add_argument('--output', type=str, default='data/segments', help='Output directory for segments')
+
+    args = parser.parse_args()
+    segment_audio(args.input, args.output)

@@ -4,14 +4,15 @@ import sys
 import numpy as np
 from sklearn.neural_network import MLPRegressor
 import pickle
+import argparse
 
 def train_model(dataset_path, labelset_path, model_path):
     if not os.path.exists(dataset_path):
-        print(f"Error: {dataset_path} not found.")
+        print(f"Error: {dataset_path} not found.", file=sys.stderr)
         sys.exit(1)
 
     if not os.path.exists(labelset_path):
-        print(f"Error: {labelset_path} not found. Start labeling first.")
+        print(f"Error: {labelset_path} not found. Start labeling first.", file=sys.stderr)
         sys.exit(1)
 
     with open(dataset_path, 'r') as f:
@@ -31,7 +32,7 @@ def train_model(dataset_path, labelset_path, model_path):
             y.append(labelset['data'][file_id])
 
     if len(X) == 0:
-        print("Error: No intersecting data between dataset and labelset.")
+        print("Error: No intersecting data between dataset and labelset.", file=sys.stderr)
         sys.exit(1)
 
     X = np.array(X)
@@ -60,7 +61,7 @@ def train_model(dataset_path, labelset_path, model_path):
         if abs(prev_loss - loss) < 1e-5:
             wait += 1
             if wait >= patience:
-                print(f"Leveled out at epoch {i} with loss {loss:.6f}")
+                print(f"Leveled out at epoch {i} with loss {loss:.6f}", file=sys.stderr)
                 break
         else:
             wait = 0
@@ -70,6 +71,13 @@ def train_model(dataset_path, labelset_path, model_path):
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     with open(model_path, 'wb') as f:
         pickle.dump(mlp, f)
+    print(f"Model saved to {model_path}", file=sys.stderr)
 
 if __name__ == "__main__":
-    train_model('data/dataset.json', 'data/labelset.json', 'data/model.pkl')
+    parser = argparse.ArgumentParser(description="Train MLP model")
+    parser.add_argument('--dataset', type=str, default='data/dataset.json', help='Path to dataset JSON')
+    parser.add_argument('--labelset', type=str, default='data/labelset.json', help='Path to labelset JSON')
+    parser.add_argument('--model', type=str, default='data/model.pkl', help='Path to save the model')
+
+    args = parser.parse_args()
+    train_model(args.dataset, args.labelset, args.model)

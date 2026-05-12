@@ -4,6 +4,8 @@ import librosa
 import numpy as np
 import json
 from sklearn.preprocessing import StandardScaler
+import argparse
+import sys
 
 def extract_features(file_path):
     y, sr = librosa.load(file_path, sr=None)
@@ -49,8 +51,17 @@ def create_dataset(input_dir, output_json):
         "cols": all_features.shape[1] if len(all_features) > 0 else 26,
         "data": feature_dict
     }
+
+    os.makedirs(os.path.dirname(output_json), exist_ok=True)
     with open(output_json, 'w') as f:
         json.dump(dataset, f, indent=2)
 
+    print(f"Dataset created with {len(file_ids)} segments", file=sys.stderr)
+
 if __name__ == "__main__":
-    create_dataset('data/segments', 'data/dataset.json')
+    parser = argparse.ArgumentParser(description="Extract features from audio segments")
+    parser.add_argument('--input', type=str, default='data/segments', help='Input directory with segment WAV files')
+    parser.add_argument('--output', type=str, default='data/dataset.json', help='Output JSON file for dataset')
+
+    args = parser.parse_args()
+    create_dataset(args.input, args.output)
