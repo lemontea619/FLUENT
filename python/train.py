@@ -2,13 +2,32 @@ import argparse
 import json
 import os
 import pickle
+import signal
 import sys
+from datetime import datetime, timezone
 
 import numpy as np
 from sklearn.neural_network import MLPRegressor
 
+_state = {"mlp": None, "model_path": None}
 
-def train_model(dataset_path, labelset_path, model_path, alpha=0.01):
+
+def _handle_sigterm(sig, frame):
+    mlp = _state["mlp"]
+    model_path = _state["model_path"]
+    if mlp is not None and model_path:
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        with open(model_path, "wb") as f:
+            pickle.dump(mlp, f)
+        print(json.dumps({"status": "interrupted", "saved": True}), flush=True)
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, _handle_sigterm)
+
+
+def train_model(dataset_path, labelset_path, model_path, alpha=0.01, resume=False):
+    _state["model_path"] = model_path
     if not os.path.exists(dataset_path):
         print(f"Error: {dataset_path} not found.", file=sys.stderr)
         sys.exit(1)
@@ -44,18 +63,24 @@ def train_model(dataset_path, labelset_path, model_path, alpha=0.01):
     x_arr = np.array(x_arr)
     y_arr = np.array(y_arr)
 
-    mlp = MLPRegressor(
-        hidden_layer_sizes=(32, 16),
-        activation="relu",
-        solver="adam",
-        alpha=alpha,
-        max_iter=1000,
-        random_state=42,
-        early_stopping=False,
-    )
+    if resume and os.path.exists(model_path):
+        with open(model_path, "rb") as f:
+            mlp = pickle.load(f)
+        mlp.set_params(alpha=alpha, warm_start=True, max_iter=1)
+        print(json.dumps({"status": "resumed"}), flush=True)
+    else:
+        mlp = MLPRegressor(
+            hidden_layer_sizes=(32, 16),
+            activation="relu",
+            solver="adam",
+            alpha=alpha,
+            max_iter=1000,
+            random_state=42,
+            early_stopping=False,
+        )
+        mlp.set_params(warm_start=True, max_iter=1)
 
-    mlp.set_params(warm_start=True, max_iter=1)
-
+    _state["mlp"] = mlp
     prev_loss = float("inf")
     patience = 10
     wait = 0
@@ -84,6 +109,13 @@ def train_model(dataset_path, labelset_path, model_path, alpha=0.01):
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     with open(model_path, "wb") as f:
         pickle.dump(mlp, f)
+    meta = {
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "trained_ids": labeled_ids,
+    }
+    meta_path = os.path.join(os.path.dirname(model_path), "train_meta.json")
+    with open(meta_path, "w") as f:
+        json.dump(meta, f, indent=2)
     print(f"Model saved to {model_path}", file=sys.stderr)
 
 
@@ -102,8 +134,11 @@ if __name__ == "__main__":
         "--model", type=str, default="data/model.pkl", help="Path to save the model"
     )
     parser.add_argument(
+        "--resume", action="store_true", help="Resume from existing model.pkl"
+    )
+    parser.add_argument(
         "--alpha", type=float, default=0.01, help="L2 regularization alpha"
     )
 
     args = parser.parse_args()
-    train_model(args.dataset, args.labelset, args.model, args.alpha)
+    train_model(args.dataset, args.labelset, args.model, args.alpha, args.resume)

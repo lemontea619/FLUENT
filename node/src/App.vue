@@ -10,11 +10,24 @@
         <div class="flex overflow-x-auto gap-2 pb-4 mb-4 timeline-container">
           <button
             v-for="segment in segments" :key="segment" @click="selectSegment(segment)"
-            class="px-4 py-2 rounded border whitespace-nowrap min-w-[120px] text-center"
-            :class="[currentSegment === segment ? 'bg-blue-500 text-white border-blue-600' : 'bg-gray-50 border-gray-300', hasLabels(segment) ? 'border-b-4 border-b-green-500' : '']"
+            class="px-4 py-2 rounded border whitespace-nowrap min-w-[120px] text-center flex items-center justify-center gap-2"
+            :class="currentSegment === segment ? 'bg-blue-500 text-white border-blue-600' : 'bg-gray-50 border-gray-300'"
           >
+            <span
+              class="inline-block w-2 h-2 rounded-full flex-shrink-0"
+              :class="{
+                'bg-gray-400': segmentStatus(segment) === 'unlabeled',
+                'bg-yellow-400': segmentStatus(segment) === 'pending',
+                'bg-green-500': segmentStatus(segment) === 'trained',
+              }"
+            ></span>
             {{ segment }}
           </button>
+        </div>
+        <div class="flex gap-4 text-xs text-gray-500">
+          <span><span class="inline-block w-2 h-2 rounded-full bg-gray-400 mr-1"></span>unlabeled</span>
+          <span><span class="inline-block w-2 h-2 rounded-full bg-yellow-400 mr-1"></span>pending</span>
+          <span><span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>trained</span>
         </div>
 
         <div v-if="currentSegment" class="mt-6 border-t pt-6">
@@ -65,6 +78,7 @@
           <button @click="trainModel" :disabled="isTraining" class="bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 shadow disabled:opacity-50">
             {{ isTraining ? 'Training...' : 'Train Model' }}
           </button>
+          <span v-if="pendingCount > 0 && !isTraining" class="text-yellow-600 text-sm">{{ pendingCount }} pending — retrain recommended</span>
           <span v-if="trainStatus === 'converged'" class="text-green-600 text-sm font-medium">Converged</span>
           <span v-else-if="trainStatus === 'error'" class="text-red-600 text-sm font-medium">Training failed</span>
         </div>
@@ -77,7 +91,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { io } from 'socket.io-client'
 
@@ -89,12 +103,27 @@ const trainStatus = ref('')
 const config = ref([])
 const segments = ref([])
 const labelset = ref({ cols: 0, data: {} })
+const trainedIds = ref([])
 const currentSegment = ref(null)
 const currentLabels = ref([])
 
 const fetchConfig = async () => config.value = (await axios.get('/api/config')).data
 const fetchSegments = async () => segments.value = (await axios.get('/api/segments')).data
 const fetchLabels = async () => labelset.value = (await axios.get('/api/labels')).data
+const fetchTrainMeta = async () => {
+  const meta = (await axios.get('/api/train/meta')).data
+  trainedIds.value = meta.trained_ids || []
+}
+
+const segmentStatus = (id) => {
+  if (!labelset.value.data[id]) return 'unlabeled'
+  if (trainedIds.value.includes(id)) return 'trained'
+  return 'pending'
+}
+
+const pendingCount = computed(() =>
+  segments.value.filter(id => segmentStatus(id) === 'pending').length
+)
 
 const decodeLabels = (flat, cfg) => {
   let idx = 0
@@ -180,15 +209,16 @@ const predict = async (silent = false) => {
 }
 
 onMounted(async () => {
-  await fetchConfig(); await fetchSegments(); await fetchLabels()
+  await fetchConfig(); await fetchSegments(); await fetchLabels(); await fetchTrainMeta()
   const socket = io()
   socket.on('train:progress', data => {
     trainLogs.value.push(data)
     if (data.status === 'converged') trainStatus.value = 'converged'
   })
-  socket.on('train:done', ({ success }) => {
+  socket.on('train:done', async ({ success }) => {
     isTraining.value = false
     if (!success) trainStatus.value = 'error'
+    else await fetchTrainMeta()
   })
 })
 

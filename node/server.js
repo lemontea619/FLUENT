@@ -117,14 +117,18 @@ const spawnPython = (script, args = []) =>
       console.error(`[${script}]`, d.toString().trim());
     });
     proc.on("close", (code) =>
-      code === 0 ? resolve(out) : reject(new Error(err)),
+      code === 0 || code === 2
+        ? resolve({ out, code })
+        : reject(new Error(err)),
     );
   });
 
 app.post("/api/predict", async (req, res) => {
   const { id } = req.body;
   try {
-    const out = await spawnPython("python/predict.py");
+    const { out, code } = await spawnPython("python/predict.py");
+    if (code === 2)
+      return res.json({ success: false, message: "model_not_found" });
     const predictions = JSON.parse(out);
     predictions.data?.[id]
       ? res.json({ success: true, prediction: predictions.data[id] })
@@ -139,9 +143,12 @@ app.post("/api/train", (req, res) => {
   if (trainingProcess)
     return res.status(409).json({ error: "Training already in progress" });
   const alpha = parseFloat(req.body.alpha) || 0.01;
+  const resume = req.body.resume === true;
+  const args = ["--alpha", String(alpha)];
+  if (resume) args.push("--resume");
   const proc = spawn(
     PYTHON_BIN,
-    [path.join(ROOT_DIR, "python/train.py"), "--alpha", String(alpha)],
+    [path.join(ROOT_DIR, "python/train.py"), ...args],
     { cwd: ROOT_DIR },
   );
   trainingProcess = proc;
@@ -165,6 +172,35 @@ app.post("/api/train", (req, res) => {
     trainingProcess = null;
     io.emit("train:done", { success: code === 0 });
   });
+});
+
+app.post("/api/train/stop", (req, res) => {
+  if (!trainingProcess)
+    return res.status(409).json({ error: "No training in progress" });
+  trainingProcess.kill("SIGTERM");
+  res.json({ success: true });
+});
+
+app.delete("/api/model", async (req, res) => {
+  const modelPath = path.join(DATA_DIR, "model.pkl");
+  try {
+    await fs.rm(modelPath, { force: true });
+    await fs.rm(path.join(DATA_DIR, "train_meta.json"), { force: true });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/train/meta", async (req, res) => {
+  try {
+    const meta = JSON.parse(
+      await fs.readFile(path.join(DATA_DIR, "train_meta.json"), "utf8"),
+    );
+    res.json(meta);
+  } catch {
+    res.json({ trained_at: null, trained_ids: [] });
+  }
 });
 
 httpServer.listen(PORT, () => console.log(`Server listening on port ${PORT}`));

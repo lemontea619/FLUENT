@@ -4,6 +4,7 @@ import json
 import os
 import sys
 
+import joblib
 import librosa
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -52,6 +53,9 @@ def create_dataset(input_dir, output_json):
     if len(all_features) > 0:
         scaler = StandardScaler()
         all_features_scaled = scaler.fit_transform(all_features)
+        scaler_path = os.path.join(os.path.dirname(output_json), "scaler.pkl")
+        joblib.dump(scaler, scaler_path)
+        print(f"Scaler saved to {scaler_path}", file=sys.stderr)
         for i, file_id in enumerate(file_ids):
             feature_dict[file_id] = all_features_scaled[i].tolist()
     dataset = {

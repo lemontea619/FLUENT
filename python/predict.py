@@ -9,11 +9,8 @@ import numpy as np
 
 def predict_labels(dataset_path, model_path):
     if not os.path.exists(model_path):
-        print(
-            f"Error: Model not found at {model_path}. Train the model first.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        print(json.dumps({"error": "model_not_found"}))
+        sys.exit(2)
 
     with open(model_path, "rb") as f:
         mlp = pickle.load(f)

@@ -11,7 +11,10 @@ FLUENT/
 │   ├── segments/    # 分割済みセグメント WAV
 │   ├── config.json  # ラベル定義（Y の次元を決める）
 │   ├── dataset.json # A-MAP 特徴量（X）
-│   └── labelset.json# A-MAP ラベル（Y）
+│   ├── labelset.json# A-MAP ラベル（Y）
+│   ├── scaler.pkl   # StandardScaler パラメータ（joblib）
+│   ├── model.pkl    # 学習済み MLP モデル（joblib）
+│   └── train_meta.json # 最終学習メタデータ
 ├── .env             # 環境変数（.gitignore 対象）
 ├── .env.example     # .env のテンプレート
 └── pyproject.toml   # Python 依存関係（uv 管理）
@@ -63,7 +66,81 @@ UI の `Model Training` セクションから：
 - epoch ごとの loss 値がリアルタイム表示され、収束時に `Converged` と通知
 - ラベル未入力のセグメントを選択すると AI Suggestion が自動実行
 
-## 3. データ契約（A-MAP スキーマ）
+## 3. 学習ライフサイクル
+
+### セグメントのステータス
+
+UI の各セグメントボタンにはドットでステータスが表示される。
+
+| ドット色 | ステータス | 意味 |
+|---|---|---|
+| グレー | `unlabeled` | ラベルなし |
+| 黄色 | `pending` | ラベルあり・未学習（モデルに未反映） |
+| 緑 | `trained` | ラベルあり・学習済み |
+
+`pending` のセグメントが存在する場合、Train Model ボタン横に "N pending — retrain recommended" と警告が表示される。
+
+### train_meta.json
+
+学習完了時に `data/train_meta.json` が書き出される。UI はこのファイルを参照してステータスを判定する。
+
+```json
+{
+  "trained_at": "2024-01-01T00:00:00+00:00",
+  "trained_ids": ["example-001", "example-002"]
+}
+```
+
+### 学習の中断・再開・リセット
+
+| 操作 | API | 動作 |
+|---|---|---|
+| 通常学習 | `POST /api/train` `{ alpha }` | ゼロから学習 |
+| 途中から再開 | `POST /api/train` `{ alpha, resume: true }` | `model.pkl` をロードして続きから学習 |
+| 中断（途中保存） | `POST /api/train/stop` | SIGTERM を送信。Python 側でその時点の重みを `model.pkl` に保存して終了 |
+| リセット | `DELETE /api/model` | `model.pkl` と `train_meta.json` を削除 |
+
+再開フロー：
+
+```
+POST /api/train/stop
+  → SIGTERM → train.py が現在の mlp を model.pkl に保存 → exit(0)
+  → train:done { success: true } がブロードキャストされ UI のステータスが更新
+
+POST /api/train { resume: true }
+  → train.py が model.pkl をロードして epoch ループを継続
+```
+
+注意：再開時は同じ `dataset.json` / `labelset.json` を使用する。音源を追加して `extractor.py` を再実行した場合は scaler が再フィットされるため、必ずゼロから学習し直すこと（`resume` は使用不可）。
+
+## 4. スケーリング仕様
+
+### 特徴量の標準化（X）
+
+`extractor.py` は全セグメントの特徴量を一括で `StandardScaler`（平均0、標準偏差1）に変換してから `dataset.json` に書き出す。
+スケーラーのパラメータ（平均・分散）は `data/scaler.pkl` に joblib 形式で保存される。
+
+```
+extractor.py → StandardScaler.fit_transform(全セグメント) → dataset.json（スケール済み）
+                                                          → data/scaler.pkl
+```
+
+注意事項：
+- `dataset.json` に保存される特徴量はスケール済みの値である
+- 学習（`train.py`）は `dataset.json` をそのまま読み込むため、追加のスケール変換は不要
+- 新規セグメントを後から単体で予測する場合は `data/scaler.pkl` をロードして同じ変換を適用すること
+- 音源を追加して `extractor.py` を再実行すると scaler は再フィットされる。この場合は `model.pkl` も必ず再学習すること（スケール係数とモデルの不整合を防ぐため）
+
+### 推論結果の正規化（Y）
+
+`predict.py` はモデル出力に `numpy.clip(y_pred, 0.0, 1.0)` を適用して出力を 0.0〜1.0 に収める。
+これにより、モデルがトレーニングデータ外の値を外挿（Extrapolation）した場合でもアダプター互換性が保たれる。
+
+```
+MLPRegressor.predict(x) → np.clip(..., 0.0, 1.0) → JSON 出力
+```
+
+## 5. データ契約（A-MAP スキーマ）
 
 ### A-MAP とは
 
