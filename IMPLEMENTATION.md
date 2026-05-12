@@ -51,7 +51,7 @@ uv run python python/extractor.py
 cd node && npm run dev
 ```
 
-`http://localhost:5173` にアクセス。
+`http://localhost:3000` にアクセス。
 
 - セグメントを選択して試聴
 - `config.json` の定義に従い動的生成されたフォームでラベル付け

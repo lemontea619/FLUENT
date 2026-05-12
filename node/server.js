@@ -1,3 +1,11 @@
+// -----------------------------------------------------------
+// server.js — Express API サーバー
+//
+// ブラウザ (public/index.html) と Python スクリプトの橋渡し役。
+// 詳細は node/DEVELOPMENT.md を参照してください。
+// -----------------------------------------------------------
+
+// dotenv は他の import より先に実行する必要があるため、先頭に配置
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import path from "path";
@@ -7,13 +15,11 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, "../.env") });
 
 import express from "express";
-import cors from "cors";
 import fs from "fs/promises";
 import { constants } from "fs";
-import { createServer } from "http";
-import { Server } from "socket.io";
 import { spawn } from "child_process";
 
+// --- 環境変数（未設定の場合はデフォルト値を使用） ---
 const DATA_DIR = path.resolve(__dirname, "..", process.env.DATA_DIR || "data");
 const PYTHON_BIN = path.resolve(
   __dirname,
@@ -24,24 +30,19 @@ const ROOT_DIR = path.resolve(__dirname, "..");
 const PORT = process.env.PORT || 3000;
 
 const app = express();
-const httpServer = createServer(app);
-const allowedOrigins = (
-  process.env.ALLOWED_ORIGINS || "http://localhost:5173"
-).split(",");
-
-const io = new Server(httpServer, { cors: { origin: allowedOrigins } });
-
-app.use(
-  cors({
-    origin: (origin, cb) =>
-      !origin || allowedOrigins.includes(origin)
-        ? cb(null, true)
-        : cb(new Error("Not allowed")),
-  }),
-);
 app.use(express.json());
+
+// data/ フォルダを静的配信（音声ファイルをブラウザから直接再生するため）
 app.use("/data", express.static(DATA_DIR));
 
+// public/ フォルダを静的配信（index.html を含む UI ファイル）
+app.use(express.static(path.join(__dirname, "public")));
+
+// -----------------------------------------------------------
+// API エンドポイント
+// -----------------------------------------------------------
+
+// フォームの構成定義を返す。UI はこの内容をもとに動的にフォームを生成する
 app.get("/api/config", async (req, res) => {
   try {
     res.json(
@@ -52,6 +53,7 @@ app.get("/api/config", async (req, res) => {
   }
 });
 
+// data/segments/ にある WAV ファイルの ID 一覧を返す（拡張子なし・ソート済み）
 app.get("/api/segments", async (req, res) => {
   try {
     const files = await fs.readdir(path.join(DATA_DIR, "segments"));
@@ -66,6 +68,7 @@ app.get("/api/segments", async (req, res) => {
   }
 });
 
+// 保存済みラベルをすべて返す。まだ1件もなければ空の A-MAP 構造を返す
 app.get("/api/labels", async (req, res) => {
   const labelsetPath = path.join(DATA_DIR, "labelset.json");
   try {
@@ -76,6 +79,7 @@ app.get("/api/labels", async (req, res) => {
   }
 });
 
+// ラベルを1件保存する。上書き前に data/backups/ へ自動バックアップを作成する
 app.post("/api/labels", async (req, res) => {
   const { id, labels, cols } = req.body;
   const labelsetPath = path.join(DATA_DIR, "labelset.json");
@@ -84,6 +88,7 @@ app.post("/api/labels", async (req, res) => {
     await fs.access(labelsetPath, constants.F_OK);
     const data = await fs.readFile(labelsetPath, "utf8");
     labelset = JSON.parse(data);
+    // タイムスタンプ付きのファイル名でバックアップ
     const backupDir = path.join(DATA_DIR, "backups");
     await fs.mkdir(backupDir, { recursive: true });
     await fs.writeFile(
@@ -104,6 +109,16 @@ app.post("/api/labels", async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------
+// Python 呼び出しヘルパー
+//
+// exit code 0 → 成功
+// exit code 2 → モデル未存在（「まだ学習していない」状態。エラーではない）
+// それ以外   → reject（エラー扱い）
+//
+// ※ 学習（train.py）だけは進捗をリアルタイムでストリームする必要があるため
+//   このヘルパーを使わず spawn を直接使っている（意図的な例外）
+// -----------------------------------------------------------
 const spawnPython = (script, args = []) =>
   new Promise((resolve, reject) => {
     const proc = spawn(PYTHON_BIN, [path.join(ROOT_DIR, script), ...args], {
@@ -123,6 +138,8 @@ const spawnPython = (script, args = []) =>
     );
   });
 
+// 全セグメントを推論し、指定 ID の予測値を返す
+// モデルが存在しない場合は 500 ではなく { success: false, message: "model_not_found" } を返す
 app.post("/api/predict", async (req, res) => {
   const { id } = req.body;
   try {
@@ -138,21 +155,39 @@ app.post("/api/predict", async (req, res) => {
   }
 });
 
+// 学習中のプロセスを保持する（同時に2つ走らせないための管理用）
 let trainingProcess = null;
+
+// 学習を開始する。レスポンスは SSE ストリームで進捗を配信する
+// resume: true を渡すと既存モデルを読み込んで続きから学習する
 app.post("/api/train", (req, res) => {
   if (trainingProcess)
     return res.status(409).json({ error: "Training already in progress" });
+
   const alpha = parseFloat(req.body.alpha) || 0.01;
   const resume = req.body.resume === true;
   const args = ["--alpha", String(alpha)];
   if (resume) args.push("--resume");
+
   const proc = spawn(
     PYTHON_BIN,
     [path.join(ROOT_DIR, "python/train.py"), ...args],
     { cwd: ROOT_DIR },
   );
   trainingProcess = proc;
-  res.json({ success: true });
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+
+  // SSE 送信ヘルパー（クライアント切断後の write エラーを無視する）
+  const send = (data) => {
+    try {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch {}
+  };
+
+  // train.py は各 epoch 後に JSON を1行 stdout へ出力する
+  // 例: { "epoch": 5, "loss": 0.0123 } / { "status": "converged", ... }
   proc.stdout.on("data", (data) => {
     data
       .toString()
@@ -161,19 +196,24 @@ app.post("/api/train", (req, res) => {
       .filter(Boolean)
       .forEach((line) => {
         try {
-          io.emit("train:progress", JSON.parse(line));
+          JSON.parse(line);
+          res.write(`data: ${line}\n\n`);
         } catch {}
       });
   });
+
   proc.stderr.on("data", (data) =>
     console.error("[train.py]", data.toString().trim()),
   );
+
   proc.on("close", (code) => {
     trainingProcess = null;
-    io.emit("train:done", { success: code === 0 });
+    send({ status: "done", success: code === 0 });
+    res.end();
   });
 });
 
+// 学習を中断する。SIGTERM を受け取った train.py がその時点のモデルを保存して終了する
 app.post("/api/train/stop", (req, res) => {
   if (!trainingProcess)
     return res.status(409).json({ error: "No training in progress" });
@@ -181,6 +221,7 @@ app.post("/api/train/stop", (req, res) => {
   res.json({ success: true });
 });
 
+// モデルと学習履歴を削除する（リセット）
 app.delete("/api/model", async (req, res) => {
   const modelPath = path.join(DATA_DIR, "model.pkl");
   try {
@@ -192,6 +233,8 @@ app.delete("/api/model", async (req, res) => {
   }
 });
 
+// 最終学習のメタデータ（日時・対象セグメント）を返す
+// UI はこの trained_ids でセグメントのステータスドット（緑/黄/グレー）を判定する
 app.get("/api/train/meta", async (req, res) => {
   try {
     const meta = JSON.parse(
@@ -199,8 +242,9 @@ app.get("/api/train/meta", async (req, res) => {
     );
     res.json(meta);
   } catch {
+    // ファイルが存在しない = まだ一度も学習していない
     res.json({ trained_at: null, trained_ids: [] });
   }
 });
 
-httpServer.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));

@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLUENT Label Manager</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f3f4f6; padding: 2rem; color: #1f2937; }
+    .container { max-width: 56rem; margin: 0 auto; }
+    header { margin-bottom: 2rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; }
+    .subtitle { color: #6b7280; margin-top: 0.25rem; font-size: 0.875rem; }
+
+    /* Card */
+    .card { background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 1.5rem; margin-bottom: 1.5rem; }
+
+    /* Segment list */
+    .segment-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .seg-btn { display: flex; align-items: center; gap: 0.375rem; padding: 0.375rem 0.75rem; border-radius: 0.375rem; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; font-size: 0.875rem; }
+    .seg-btn:hover { background: #e5e7eb; }
+    .seg-btn.active { background: #3b82f6; color: white; border-color: #2563eb; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+    .dot-unlabeled { background: #9ca3af; }
+    .dot-pending   { background: #facc15; }
+    .dot-trained   { background: #22c55e; }
+    .legend { display: flex; gap: 1rem; font-size: 0.75rem; color: #6b7280; }
+    .legend span { display: flex; align-items: center; gap: 0.25rem; }
+
+    /* Label section */
+    .divider { border-top: 1px solid #e5e7eb; margin: 1.5rem 0; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .section-header h3 { font-size: 1rem; font-weight: 500; }
+    audio { height: 2.5rem; }
+    .field { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0.375rem; padding: 1rem; margin-bottom: 0.75rem; }
+    .field-label { font-size: 0.875rem; font-weight: 500; color: #374151; display: block; margin-bottom: 0.5rem; }
+    input[type=color] { height: 2.5rem; width: 100%; border: none; border-radius: 0.25rem; cursor: pointer; }
+    select { width: 100%; padding: 0.375rem 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; background: white; font-size: 0.875rem; }
+    .slider-row { display: flex; align-items: center; gap: 0.5rem; }
+    input[type=range] { flex: 1; }
+    .slider-val { font-size: 0.875rem; color: #6b7280; min-width: 2.5rem; }
+    .checkbox-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; margin-top: 0.25rem; }
+    .checkbox-row input { width: 1rem; height: 1rem; }
+    .actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; }
+
+    /* Buttons */
+    .btn { padding: 0.375rem 1rem; border-radius: 0.375rem; border: none; cursor: pointer; font-size: 0.875rem; font-weight: 500; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-green  { background: #16a34a; color: white; }
+    .btn-indigo { background: #4f46e5; color: white; }
+    .btn-purple { background: #9333ea; color: white; }
+    .btn-red    { background: #dc2626; color: white; }
+    .loading-msg { font-size: 0.875rem; color: #2563eb; font-weight: 500; }
+
+    /* Training */
+    .train-controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .alpha-label { font-size: 0.875rem; color: #374151; white-space: nowrap; }
+    #alpha-slider { width: 10rem; }
+    .status { font-size: 0.875rem; font-weight: 500; }
+    .status-ok   { color: #16a34a; }
+    .status-warn { color: #d97706; }
+    .status-err  { color: #dc2626; }
+    #train-log { font-family: monospace; font-size: 0.75rem; background: #f9fafb; border-radius: 0.375rem; padding: 0.75rem; max-height: 8rem; overflow-y: auto; border: 1px solid #e5e7eb; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>FLUENT Label Manager</h1>
+    <p class="subtitle">Audio to Sensitivity Mapping</p>
+  </header>
+
+  <div class="card">
+    <div class="segment-list" id="segment-list"></div>
+    <div class="legend">
+      <span><span class="dot dot-unlabeled"></span>unlabeled</span>
+      <span><span class="dot dot-pending"></span>pending</span>
+      <span><span class="dot dot-trained"></span>trained</span>
+    </div>
+
+    <div id="label-section" hidden>
+      <div class="divider"></div>
+      <div class="section-header">
+        <h3 id="segment-title"></h3>
+        <audio id="player" controls></audio>
+      </div>
+      <div id="form-fields"></div>
+      <div class="actions">
+        <button class="btn btn-green"  id="save-btn"    onclick="saveLabels()" disabled>Save Labels</button>
+        <button class="btn btn-indigo" id="suggest-btn" onclick="predict()"    disabled>AI Suggestion</button>
+        <span id="loading-msg" class="loading-msg" hidden>Loading...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:1rem;font-weight:500;margin-bottom:1rem;">Model Training</h2>
+    <div class="train-controls">
+      <span class="alpha-label">Alpha: <span id="alpha-val">0.01</span></span>
+      <input type="range" id="alpha-slider" min="0.001" max="0.1" step="0.001" value="0.01"
+             oninput="document.getElementById('alpha-val').textContent = this.value">
+      <button class="btn btn-purple" id="train-btn" onclick="trainModel()">Train Model</button>
+      <button class="btn btn-red"    id="stop-btn"  onclick="stopTraining()" hidden>Stop</button>
+      <span id="pending-msg" class="status status-warn" hidden></span>
+      <span id="train-status" class="status"></span>
+    </div>
+    <div id="train-log" hidden></div>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let config = [], segments = [], labelset = { cols: 0, data: {} }, trainedIds = [], currentSegment = null
+
+// ─── API helper ──────────────────────────────────────────────────────────────
+const api = (method, url, body) => fetch(url, {
+  method,
+  headers: body ? { 'Content-Type': 'application/json' } : {},
+  body: body ? JSON.stringify(body) : undefined,
+}).then(r => r.json())
+
+// ─── Label serialization ─────────────────────────────────────────────────────
+// UI の値（hex カラー・インデックス・真偽値）を 0.0〜1.0 のフラット配列に変換する
+function encodeLabels(uiValues) {
+  const flat = []
+  config.forEach((field, i) => {
+    const val = uiValues[i]
+    if (field.type === 'color-picker') {
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(val)
+      ;[m[1], m[2], m[3]].slice(0, field.dims || 3).forEach(h => flat.push(parseInt(h, 16) / 255))
+    } else if (field.type === 'dropdown') {
+      flat.push(val / (field.options.length - 1))
+    } else if (field.type === 'checkboxes') {
+      val.forEach(v => flat.push(v ? 1.0 : 0.0))
+    } else {
+      flat.push(val)
+    }
+  })
+  return flat
+}
+
+// 0.0〜1.0 のフラット配列を UI の値に戻す
+function decodeLabels(flat) {
+  let idx = 0
+  return config.map(field => {
+    if (field.type === 'color-picker') {
+      const dims = field.dims || 3
+      const ch = Array.from({ length: dims }, () => flat[idx++])
+      return '#' + (1 << 24 | Math.round(ch[0] * 255) << 16 | Math.round(ch[1] * 255) << 8 | Math.round(ch[2] * 255)).toString(16).slice(1)
+    } else if (field.type === 'dropdown') {
+      return Math.round(flat[idx++] * (field.options.length - 1))
+    } else if (field.type === 'checkboxes') {
+      return Array.from({ length: field.options.length }, () => flat[idx++] >= 0.5)
+    } else {
+      return flat[idx++]
+    }
+  })
+}
+
+function defaultValues() {
+  return config.map(field => {
+    if (field.type === 'color-picker') return '#000000'
+    if (field.type === 'slider')       return field.min || 0
+    if (field.type === 'checkboxes')   return Array(field.options.length).fill(false)
+    return null
+  })
+}
+
+// ─── Segment status ───────────────────────────────────────────────────────────
+function segmentStatus(id) {
+  if (!labelset.data[id])        return 'unlabeled'
+  if (trainedIds.includes(id))   return 'trained'
+  return 'pending'
+}
+
+// ─── Rendering ────────────────────────────────────────────────────────────────
+function renderSegments() {
+  const list = document.getElementById('segment-list')
+  list.innerHTML = ''
+  segments.forEach(id => {
+    const btn = document.createElement('button')
+    btn.className = 'seg-btn' + (id === currentSegment ? ' active' : '')
+    btn.onclick = () => selectSegment(id)
+    const dot = document.createElement('span')
+    dot.className = `dot dot-${segmentStatus(id)}`
+    btn.appendChild(dot)
+    btn.appendChild(document.createTextNode(id))
+    list.appendChild(btn)
+  })
+  const n = segments.filter(id => segmentStatus(id) === 'pending').length
+  const msg = document.getElementById('pending-msg')
+  msg.textContent = `${n} pending — retrain recommended`
+  msg.hidden = n === 0
+}
+
+// config.json の内容からフォーム要素を生成する（起動時に1度だけ呼ぶ）
+function buildForm() {
+  const container = document.getElementById('form-fields')
+  container.innerHTML = ''
+  config.forEach((field, i) => {
+    const wrap = document.createElement('div')
+    wrap.className = 'field'
+    const lbl = document.createElement('label')
+    lbl.className = 'field-label'
+    lbl.textContent = field.label
+    wrap.appendChild(lbl)
+
+    if (field.type === 'color-picker') {
+      const inp = document.createElement('input')
+      inp.type = 'color'; inp.id = `inp-${i}`
+      wrap.appendChild(inp)
+
+    } else if (field.type === 'dropdown') {
+      const sel = document.createElement('select')
+      sel.id = `inp-${i}`
+      field.options.forEach((opt, j) => {
+        const o = document.createElement('option')
+        o.value = j; o.textContent = opt
+        sel.appendChild(o)
+      })
+      wrap.appendChild(sel)
+
+    } else if (field.type === 'slider') {
+      const row = document.createElement('div')
+      row.className = 'slider-row'
+      const inp = document.createElement('input')
+      inp.type = 'range'; inp.id = `inp-${i}`
+      inp.min = field.min; inp.max = field.max; inp.step = field.step
+      const val = document.createElement('span')
+      val.className = 'slider-val'; val.id = `val-${i}`
+      val.textContent = field.min || 0
+      inp.oninput = () => { val.textContent = inp.value }
+      row.appendChild(inp); row.appendChild(val)
+      wrap.appendChild(row)
+
+    } else if (field.type === 'checkboxes') {
+      const grp = document.createElement('div')
+      grp.id = `inp-${i}`
+      field.options.forEach(opt => {
+        const row = document.createElement('label')
+        row.className = 'checkbox-row'
+        const cb = document.createElement('input')
+        cb.type = 'checkbox'
+        row.appendChild(cb)
+        row.appendChild(document.createTextNode(opt))
+        grp.appendChild(row)
+      })
+      wrap.appendChild(grp)
+    }
+    container.appendChild(wrap)
+  })
+}
+
+function getFormValues() {
+  return config.map((field, i) => {
+    if (field.type === 'color-picker') return document.getElementById(`inp-${i}`).value
+    if (field.type === 'dropdown')     return parseInt(document.getElementById(`inp-${i}`).value)
+    if (field.type === 'slider')       return parseFloat(document.getElementById(`inp-${i}`).value)
+    if (field.type === 'checkboxes')   return Array.from(document.getElementById(`inp-${i}`).querySelectorAll('input')).map(cb => cb.checked)
+  })
+}
+
+function setFormValues(uiValues) {
+  config.forEach((field, i) => {
+    const val = uiValues[i]
+    if (field.type === 'color-picker') {
+      document.getElementById(`inp-${i}`).value = val
+    } else if (field.type === 'dropdown') {
+      document.getElementById(`inp-${i}`).value = val
+    } else if (field.type === 'slider') {
+      document.getElementById(`inp-${i}`).value = val
+      document.getElementById(`val-${i}`).textContent = val
+    } else if (field.type === 'checkboxes') {
+      document.getElementById(`inp-${i}`).querySelectorAll('input').forEach((cb, j) => { cb.checked = val[j] })
+    }
+  })
+}
+
+function setLoading(on) {
+  document.getElementById('loading-msg').hidden = !on
+  document.getElementById('save-btn').disabled = on
+  document.getElementById('suggest-btn').disabled = on
+}
+
+// ─── Actions ──────────────────────────────────────────────────────────────────
+async function selectSegment(id) {
+  currentSegment = id
+  document.getElementById('segment-title').textContent = `Now Labeling: ${id}`
+  document.getElementById('player').src = `/data/segments/${id}.wav`
+  document.getElementById('label-section').hidden = false
+  document.getElementById('save-btn').disabled = false
+  document.getElementById('suggest-btn').disabled = false
+  renderSegments()
+  if (labelset.data[id]) {
+    setFormValues(decodeLabels(labelset.data[id]))
+  } else {
+    setFormValues(defaultValues())
+    await predict(true)
+  }
+}
+
+async function saveLabels() {
+  setLoading(true)
+  try {
+    const flat = encodeLabels(getFormValues())
+    await api('POST', '/api/labels', { id: currentSegment, labels: flat, cols: flat.length })
+    labelset.data[currentSegment] = flat
+    renderSegments()
+  } finally {
+    setLoading(false)
+  }
+}
+
+async function predict(silent = false) {
+  if (!silent) setLoading(true)
+  try {
+    const res = await api('POST', '/api/predict', { id: currentSegment })
+    if (res.prediction) setFormValues(decodeLabels(res.prediction))
+  } catch (e) {
+    if (!silent) console.error(e)
+  } finally {
+    if (!silent) setLoading(false)
+  }
+}
+
+// 学習を開始し、SSE ストリームで進捗を受け取る
+async function trainModel() {
+  const alpha = parseFloat(document.getElementById('alpha-slider').value) || 0.01
+  document.getElementById('train-log').innerHTML = ''
+  document.getElementById('train-log').hidden = false
+  document.getElementById('train-status').textContent = ''
+  document.getElementById('train-status').className = 'status'
+  document.getElementById('train-btn').disabled = true
+  document.getElementById('stop-btn').hidden = false
+
+  const res = await fetch('/api/train', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ alpha }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json()
+    setTrainStatus(err.error, 'err')
+    document.getElementById('train-btn').disabled = false
+    document.getElementById('stop-btn').hidden = true
+    return
+  }
+
+  // SSE メッセージは "\n\n" で区切られる。チャンクが分割されても正しく処理できるよう buf でバッファリングする
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    const parts = buf.split('\n\n')
+    buf = parts.pop() // 末尾の未完了メッセージを次のチャンクに持ち越す
+    for (const part of parts) {
+      const line = part.split('\n').find(l => l.startsWith('data: '))
+      if (!line) continue
+      let data; try { data = JSON.parse(line.slice(6)) } catch { continue }
+
+      if (data.status === 'done') {
+        document.getElementById('train-btn').disabled = false
+        document.getElementById('stop-btn').hidden = true
+        if (data.success) {
+          setTrainStatus('Done', 'ok')
+          const meta = await api('GET', '/api/train/meta')
+          trainedIds = meta.trained_ids || []
+          renderSegments()
+        } else {
+          setTrainStatus('Failed', 'err')
+        }
+      } else if (data.status === 'converged') {
+        setTrainStatus('Converged', 'ok')
+        appendLog(`epoch ${data.epoch}: loss = ${data.loss.toFixed(6)} (converged)`)
+      } else if (data.status === 'interrupted') {
+        setTrainStatus('Interrupted — model saved', 'warn')
+      } else if (data.epoch !== undefined) {
+        appendLog(`epoch ${data.epoch}: loss = ${data.loss.toFixed(6)}`)
+      }
+    }
+  }
+}
+
+async function stopTraining() {
+  await api('POST', '/api/train/stop')
+}
+
+function setTrainStatus(text, type) {
+  const el = document.getElementById('train-status')
+  el.textContent = text
+  el.className = `status status-${type}`
+}
+
+function appendLog(text) {
+  const log = document.getElementById('train-log')
+  const div = document.createElement('div')
+  div.textContent = text
+  log.appendChild(div)
+  log.scrollTop = log.scrollHeight
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+async function init() {
+  const [cfg, segs, lbls, meta] = await Promise.all([
+    api('GET', '/api/config'),
+    api('GET', '/api/segments'),
+    api('GET', '/api/labels'),
+    api('GET', '/api/train/meta'),
+  ])
+  config    = cfg
+  segments  = segs
+  labelset  = lbls
+  trainedIds = meta.trained_ids || []
+  renderSegments()
+  buildForm()
+}
+
+init()
+</script>
+</body>
+</html>
