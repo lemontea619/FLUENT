@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import fs from 'fs';
+import { readFile, writeFile, readdir } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
@@ -24,33 +25,58 @@ const io = new Server(httpServer, {
   cors: { origin: ALLOWED_ORIGINS }
 });
 
-app.get('/api/config', (req, res) => {
-  const config = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'config.json'), 'utf8'));
-  res.json(config);
+app.get('/api/config', async (req, res) => {
+  try {
+    const config = JSON.parse(await readFile(path.join(DATA_DIR, 'config.json'), 'utf8'));
+    res.json(config);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to read config" });
+  }
 });
 
-app.get('/api/segments', (req, res) => {
-  const files = fs.readdirSync(path.join(DATA_DIR, 'segments'))
-                  .filter(f => f.endsWith('.wav'))
-                  .map(f => f.replace('.wav', ''));
-  res.json(files.sort());
+app.get('/api/segments', async (req, res) => {
+  try {
+    const files = (await readdir(path.join(DATA_DIR, 'segments')))
+                    .filter(f => f.endsWith('.wav'))
+                    .map(f => f.replace('.wav', ''));
+    res.json(files.sort());
+  } catch (err) {
+    res.status(500).json({ error: "Failed to list segments" });
+  }
 });
 
-app.get('/api/labels', (req, res) => {
-  const labelsetPath = path.join(DATA_DIR, 'labelset.json');
-  if (!fs.existsSync(labelsetPath)) return res.json({ cols: 0, data: {} });
-  res.json(JSON.parse(fs.readFileSync(labelsetPath, 'utf8')));
+app.get('/api/labels', async (req, res) => {
+  try {
+    const labelsetPath = path.join(DATA_DIR, 'labelset.json');
+    const content = await readFile(labelsetPath, 'utf8');
+    res.json(JSON.parse(content));
+  } catch (err) {
+    if (err.code === 'ENOENT') return res.json({ cols: 0, data: {} });
+    res.status(500).json({ error: "Failed to read labels" });
+  }
 });
 
-app.post('/api/labels', (req, res) => {
-  const { id, labels, cols } = req.body;
-  const labelsetPath = path.join(DATA_DIR, 'labelset.json');
-  let labelset = { cols: cols || 0, data: {} };
-  if (fs.existsSync(labelsetPath)) labelset = JSON.parse(fs.readFileSync(labelsetPath, 'utf8'));
-  labelset.cols = cols || labelset.cols;
-  labelset.data[id] = labels;
-  fs.writeFileSync(labelsetPath, JSON.stringify(labelset, null, 2));
-  res.json({ success: true });
+app.post('/api/labels', async (req, res) => {
+  try {
+    const { id, labels, cols } = req.body;
+    const labelsetPath = path.join(DATA_DIR, 'labelset.json');
+    let labelset = { cols: cols || 0, data: {} };
+
+    try {
+      const content = await readFile(labelsetPath, 'utf8');
+      labelset = JSON.parse(content);
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+
+    labelset.cols = cols || labelset.cols;
+    labelset.data[id] = labels;
+    await writeFile(labelsetPath, JSON.stringify(labelset, null, 2));
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error saving labels:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/predict', (req, res) => {
