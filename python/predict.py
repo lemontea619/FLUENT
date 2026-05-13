@@ -112,8 +112,12 @@ def predict_labels(
     predictions = {}
 
     # ============================================================
-    # Step 4: 各セグメントの予測を実行
+    # Step 4: 各セグメントの予測を実行（バッチ処理）
     # ============================================================
+    # フィルタリングされたデータセットを構築する
+    file_ids = []
+    features_list = []
+
     for file_id, features in dataset["data"].items():
         # ============================================================
         # Step 4-a: target_id フィルタ（指定された場合のみ）
@@ -121,27 +125,26 @@ def predict_labels(
         # 例）--id example-001 を指定した場合、example-001 のみ処理
         if target_id is not None and file_id != target_id:
             continue
+        file_ids.append(file_id)
+        features_list.append(features)
 
+    # 推論対象がある場合のみ予測を実行する
+    if features_list:
         # ============================================================
         # Step 4-b: 特徴量を MLP 入力形式（2次元配列）に整形
         # ============================================================
-        # features は 1 次元リスト（長さ 26）
+        # features は 1 次元リスト（長さ 26）のリスト
         # MLP.predict は (N_samples, 26) の 2 次元入力を期待するため
-        # np.array([features]) で (1, 26) に変換
-        #
-        # 例）features = [0.12, 0.45, -0.33, ...]
-        #     x = [[0.12, 0.45, -0.33, ...]]  ← (1, 26)
-        x = np.array([features])
+        # np.array(features_list) で (N_samples, 26) に一括変換
+        X = np.array(features_list)
 
         # ============================================================
-        # Step 4-c: モデルで予測実行
+        # Step 4-c: モデルで予測実行（バッチ処理）
         # ============================================================
-        # mlp.predict(x) → (1, 10) の 2 次元配列を返す
-        #   - 1: サンプル数
+        # mlp.predict(X) → (N_samples, 10) の 2 次元配列を返す
+        #   - N_samples: サンプル数
         #   - 10: 感性ラベル次元数
-        #
-        # [0] でインデックスアクセスして (10,) の 1 次元配列を取得
-        y_pred = mlp.predict(x)[0]
+        y_preds = mlp.predict(X)
 
         # ============================================================
         # Step 4-d: 出力を 0.0～1.0 の範囲にクリップ（正規化）
@@ -150,7 +153,7 @@ def predict_labels(
         # MLP は訓練データの範囲外の値を出力することがある
         # 例：訓練では [0, 1] 範囲だが、推論で [-0.3, 1.5] が出力された
         #
-        # np.clip(y_pred, 0.0, 1.0) で強制的に [0.0, 1.0] に収める
+        # np.clip(y_preds, 0.0, 1.0) で強制的に [0.0, 1.0] に収める
         #
         # ロジック：
         #   - y < 0.0 → 0.0 に設定
@@ -158,13 +161,14 @@ def predict_labels(
         #   - y > 1.0 → 1.0 に設定
         #
         # これにより、UI やシンセサイザーパラメータのアダプター互換性が保証される
-        y_pred = np.clip(y_pred, 0.0, 1.0)
+        y_preds = np.clip(y_preds, 0.0, 1.0)
 
         # ============================================================
         # Step 4-e: 予測結果をリスト化して格納
         # ============================================================
         # tolist(): numpy 配列を Python リストに変換（JSON シリアライズ対応）
-        predictions[file_id] = y_pred.tolist()
+        for i, file_id in enumerate(file_ids):
+            predictions[file_id] = y_preds[i].tolist()
 
     # ============================================================
     # Step 5: 出力データを A-MAP 形式で構成
@@ -184,7 +188,9 @@ def predict_labels(
     # ============================================================
     if output_path:
         # ファイルに保存
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        dir_name = os.path.dirname(output_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
         with open(output_path, "w") as f:
             json.dump(output_data, f)
     else:
