@@ -142,6 +142,37 @@ const spawnPython = (script, args = []) =>
     );
   });
 
+// YouTube などから音声の一部をダウンロードし、データセットを更新する
+app.post("/api/youtube", async (req, res) => {
+  const { url, start, duration } = req.body;
+  if (!url) return res.status(400).json({ error: "URL is required" });
+
+  try {
+    const dlArgs = ["--url", url, "--output", path.join(DATA_DIR, "segments")];
+    if (start !== undefined) {
+      dlArgs.push("--start", String(start));
+    }
+    if (duration !== undefined) {
+      dlArgs.push("--duration", String(duration));
+    }
+
+    // 1. YouTube等からダウンロードして segments/ に保存
+    await spawnPython("python/youtube_dl.py", dlArgs);
+
+    // 2. 特徴量抽出を実行して dataset.json と scaler.pkl を更新
+    await spawnPython("python/extractor.py", [
+      "--input",
+      path.join(DATA_DIR, "segments"),
+      "--output",
+      path.join(DATA_DIR, "dataset.json"),
+    ]);
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: "Download or extraction failed", details: e.message });
+  }
+});
+
 // 全セグメントを推論し、指定 ID の予測値を返す
 // モデルが存在しない場合は 500 ではなく { success: false, message: "model_not_found" } を返す
 app.post("/api/predict", async (req, res) => {

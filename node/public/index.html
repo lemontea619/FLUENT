@@ -52,6 +52,13 @@
     .btn-red    { background: #dc2626; color: white; }
     .loading-msg { font-size: 0.875rem; color: #2563eb; font-weight: 500; }
 
+    /* YouTube Download */
+    .yt-controls { display: flex; flex-direction: column; gap: 0.5rem; }
+    .yt-row { display: flex; gap: 0.5rem; align-items: center; }
+    .yt-row input[type=text], .yt-row input[type=number] { padding: 0.375rem 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; }
+    .yt-row input[type=text] { flex: 1; }
+    .yt-row input[type=number] { width: 5rem; }
+
     /* Training */
     .train-controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
     .alpha-label { font-size: 0.875rem; color: #374151; white-space: nowrap; }
@@ -71,6 +78,22 @@
   </header>
 
   <div class="card">
+    <h2 style="font-size:1rem;font-weight:500;margin-bottom:1rem;">Add from YouTube / Audio Link</h2>
+    <div class="yt-controls">
+      <div class="yt-row">
+        <input type="text" id="yt-url" placeholder="https://www.youtube.com/watch?v=...">
+      </div>
+      <div class="yt-row">
+        <label>Start (s): <input type="number" id="yt-start" min="0"></label>
+        <label>Duration (s): <input type="number" id="yt-duration" min="1"></label>
+        <button class="btn btn-indigo" id="yt-btn" onclick="downloadYouTube()">Download & Add</button>
+        <span id="yt-status" class="status" style="margin-left:auto;"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:1rem;font-weight:500;margin-bottom:1rem;">Segments</h2>
     <div class="segment-list" id="segment-list"></div>
     <div class="legend">
       <span><span class="dot dot-unlabeled"></span>unlabeled</span>
@@ -388,6 +411,44 @@ async function trainModel() {
 
 async function stopTraining() {
   await api('POST', '/api/train/stop')
+}
+
+async function downloadYouTube() {
+  const url = document.getElementById('yt-url').value;
+  const start = document.getElementById('yt-start').value;
+  const duration = document.getElementById('yt-duration').value;
+
+  if (!url) {
+    alert("Please enter a URL");
+    return;
+  }
+
+  const btn = document.getElementById('yt-btn');
+  const status = document.getElementById('yt-status');
+  btn.disabled = true;
+  status.textContent = 'Downloading and extracting features...';
+  status.className = 'status status-warn';
+
+  try {
+    const payload = { url };
+    if (start !== "") payload.start = parseInt(start);
+    if (duration !== "") payload.duration = parseInt(duration);
+
+    await api('POST', '/api/youtube', payload);
+
+    status.textContent = 'Success!';
+    status.className = 'status status-ok';
+    document.getElementById('yt-url').value = '';
+
+    // Refresh segment list
+    segments = await api('GET', '/api/segments');
+    renderSegments();
+  } catch (e) {
+    status.textContent = 'Failed: ' + e.message;
+    status.className = 'status status-err';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function setTrainStatus(text, type) {
