@@ -280,11 +280,10 @@ def train_model(
             max_iter=1000,
             random_state=42,
             early_stopping=False,
+            tol=1e-5,
+            n_iter_no_change=10,
+            verbose=True,
         )
-        # warm_start=True で fit() を複数回呼び出すたびに、
-        # 前回の重みから続きから訓練される
-        # max_iter=1 で 1 回の fit() が 1 epoch となる
-        mlp.set_params(warm_start=True, max_iter=1)
 
     # ============================================================
     # Step 8: グローバルステートに MLP を記録
@@ -293,60 +292,56 @@ def train_model(
     _state["mlp"] = mlp
 
     # ============================================================
-    # Step 9: 収束判定用の変数初期化
+    # Step 9 & 10: 訓練ループと stdout のキャプチャ
     # ============================================================
-    prev_loss = float("inf")  # 前 epoch の loss
-    patience = 10  # 収束と判定するまでの「改善なし」epoch 数
-    wait = 0  # 現在の「改善なし」連続 epoch 数
+    # scikit-learn の C 実装ループを活用し高速化
+    # verbose=True の stdout をキャプチャし、UI 用に JSON で出力する
+    class VerboseCapture:
+        def __init__(self, original_stdout):
+            self.original_stdout = original_stdout
+            self.last_loss = None
+            self.last_epoch = None
 
-    # ============================================================
-    # Step 10: 訓練ループ
-    # ============================================================
-    # 最大 1000 epoch（実際には収束で途中終了）
-    for i in range(1000):
-        # ============================================================
-        # Step 10-a: 1 epoch 訓練
-        # ============================================================
-        # warm_start=True + max_iter=1 なので、
-        # 呼び出し毎に前回の重みから 1 epoch 進める
+        def write(self, text):
+            if text.startswith("Iteration "):
+                # 例: "Iteration 1, loss = 0.73030389"
+                try:
+                    parts = text.split(", loss = ")
+                    epoch = int(parts[0].replace("Iteration ", "")) - 1 # UI 用に 0-indexed に変換
+                    loss = float(parts[1].strip())
+                    self.last_epoch = epoch
+                    self.last_loss = loss
+                    self.original_stdout.write(json.dumps({"epoch": epoch, "loss": loss}) + "\n")
+                    self.original_stdout.flush()
+                except Exception:
+                    pass
+
+        def flush(self):
+            self.original_stdout.flush()
+
+    old_stdout = sys.stdout
+    capture = VerboseCapture(old_stdout)
+    sys.stdout = capture
+
+    try:
         mlp.fit(x_arr, y_arr)
+    finally:
+        sys.stdout = old_stdout
 
-        # ============================================================
-        # Step 10-b: Loss 値を取得・出力
-        # ============================================================
-        # mlp.loss_: 現在の訓練損失（MSE + 正則化項）
-        # loss = mean((y_pred - y_true)^2) + alpha * ||weights||^2
-        loss = mlp.loss_
-
-        # UI に epoch ごとのプログレスを通知（JSON で stdout）
-        print(json.dumps({"epoch": i, "loss": float(loss)}), flush=True)
-
-        # ============================================================
-        # Step 10-c: 収束判定
-        # ============================================================
-        # |prev_loss - loss| が 1e-5 未満（ほぼ変化なし）
-        # → 学習が plateau に達した（更に改善が難しい）
-        #
-        # 例）prev_loss = 0.12345678
-        #     loss = 0.12345680
-        #     差分 = 0.00000002 < 1e-5 → 改善なしと判定
-        if abs(prev_loss - loss) < 1e-5:
-            wait += 1
-            if wait >= patience:
-                # patience 回（デフォルト 10 epoch）連続で改善なし
-                # → 収束と判定
-                print(
-                    json.dumps(
-                        {"status": "converged", "epoch": i, "loss": float(loss)}
-                    ),
-                    flush=True,
-                )
-                break
-        else:
-            # 改善があった場合、wait をリセット
-            wait = 0
-
-        prev_loss = loss
+    # 収束判定
+    if capture.last_epoch is not None and capture.last_loss is not None:
+        if mlp.n_iter_ < mlp.max_iter:
+            # max_iter に到達する前に終了した場合、収束とみなす
+            print(
+                json.dumps(
+                    {
+                        "status": "converged",
+                        "epoch": capture.last_epoch,
+                        "loss": capture.last_loss,
+                    }
+                ),
+                flush=True,
+            )
 
     # ============================================================
     # Step 11: 学習済みモデルを保存
