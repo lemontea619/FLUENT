@@ -29,7 +29,9 @@ const PYTHON_BIN = path.resolve(
 );
 const ROOT_DIR = path.resolve(__dirname, "..");
 const PORT = process.env.PORT || 3000;
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:5173").split(",");
+const ALLOWED_ORIGINS = (
+  process.env.ALLOWED_ORIGINS || "http://localhost:5173"
+).split(",");
 
 const app = express();
 
@@ -41,6 +43,9 @@ app.use("/data", express.static(DATA_DIR));
 
 // public/ フォルダを静的配信（index.html を含む UI ファイル）
 app.use(express.static(path.join(__dirname, "public")));
+
+// favicon.ico のリクエストを無視（404 を防ぐ）
+app.get("/favicon.ico", (req, res) => res.status(204).end());
 
 // -----------------------------------------------------------
 // API エンドポイント
@@ -148,8 +153,10 @@ app.post("/api/predict", async (req, res) => {
   const { id } = req.body;
   try {
     const args = [
-      "--dataset", path.join(DATA_DIR, "dataset.json"),
-      "--model", path.join(DATA_DIR, "model.pkl")
+      "--dataset",
+      path.join(DATA_DIR, "dataset.json"),
+      "--model",
+      path.join(DATA_DIR, "model.pkl"),
     ];
     if (id) args.push("--id", id);
     const { out, code } = await spawnPython("python/predict.py", args);
@@ -176,10 +183,14 @@ app.post("/api/train", (req, res) => {
   const alpha = parseFloat(req.body.alpha) || 0.01;
   const resume = req.body.resume === true;
   const args = [
-    "--alpha", String(alpha),
-    "--dataset", path.join(DATA_DIR, "dataset.json"),
-    "--labelset", path.join(DATA_DIR, "labelset.json"),
-    "--model", path.join(DATA_DIR, "model.pkl")
+    "--alpha",
+    String(alpha),
+    "--dataset",
+    path.join(DATA_DIR, "dataset.json"),
+    "--labelset",
+    path.join(DATA_DIR, "labelset.json"),
+    "--model",
+    path.join(DATA_DIR, "model.pkl"),
   ];
   if (resume) args.push("--resume");
 

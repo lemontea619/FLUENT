@@ -41,7 +41,7 @@ def extract_features(file_path: str) -> np.ndarray:
     return features
 
 
-MIN_SAMPLES = 2048  # ~93ms at 22050 Hz
+MIN_DURATION_SECONDS = 2.0
 
 
 def create_dataset(input_dir: str, output_json: str) -> None:
@@ -53,9 +53,10 @@ def create_dataset(input_dir: str, output_json: str) -> None:
     for i, file_path in enumerate(audio_files, 1):
         file_id = os.path.basename(file_path).split(".")[0]
         info = sf.info(file_path)
-        if info.frames < MIN_SAMPLES:
+        duration = info.frames / info.samplerate if info.samplerate else 0.0
+        if duration < MIN_DURATION_SECONDS:
             print(
-                f"[{i}/{total}] Skip {file_id}: too short ({info.frames} samples)",
+                f"[{i}/{total}] Skip {file_id}: too short ({duration:.2f}s)",
                 file=sys.stderr,
                 flush=True,
             )
