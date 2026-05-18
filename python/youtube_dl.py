@@ -77,6 +77,7 @@ def download_audio(url, start_time, duration, output_dir):
 
     cmd.extend([
         "-i", downloaded_file,
+        "-af", "volume=-12dB",
         "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
         output_path
     ])
