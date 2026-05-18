@@ -1,105 +1,107 @@
 <!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FLUENT Label Manager</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: #f3f4f6; padding: 2rem; color: #1f2937; }
-    .container { max-width: 56rem; margin: 0 auto; }
-    header { margin-bottom: 2rem; }
-    h1 { font-size: 1.5rem; font-weight: 700; }
-    .subtitle { color: #6b7280; margin-top: 0.25rem; font-size: 0.875rem; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FLUENT Label Manager</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #f3f4f6;
+        padding: 2rem;
+        color: #1f2937;
+      }
+      .container {
+        max-width: 56rem;
+        margin: 0 auto;
+      }
+      header {
+        margin-bottom: 2rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+      .subtitle {
+        color: #6b7280;
+        margin-top: 0.25rem;
+        font-size: 0.875rem;
+      }
 
-    /* Card */
-    .card { background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.1); padding: 1.5rem; margin-bottom: 1.5rem; }
+      /* Card */
+      .card {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
 
-    /* Segment list */
-    .segment-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
-    .seg-btn { display: flex; align-items: center; gap: 0.375rem; padding: 0.375rem 0.75rem; border-radius: 0.375rem; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; font-size: 0.875rem; }
-    .seg-btn:hover { background: #e5e7eb; }
-    .seg-btn.active { background: #3b82f6; color: white; border-color: #2563eb; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
-    .dot-unlabeled { background: #9ca3af; }
-    .dot-pending   { background: #facc15; }
-    .dot-trained   { background: #22c55e; }
-    .legend { display: flex; gap: 1rem; font-size: 0.75rem; color: #6b7280; }
-    .legend span { display: flex; align-items: center; gap: 0.25rem; }
-
-    /* Label section */
-    .divider { border-top: 1px solid #e5e7eb; margin: 1.5rem 0; }
-    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-    .section-header h3 { font-size: 1rem; font-weight: 500; }
-    audio { height: 2.5rem; }
-    .field { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0.375rem; padding: 1rem; margin-bottom: 0.75rem; }
-    .field-label { font-size: 0.875rem; font-weight: 500; color: #374151; display: block; margin-bottom: 0.5rem; }
-    input[type=color] { height: 2.5rem; width: 100%; border: none; border-radius: 0.25rem; cursor: pointer; }
-    select { width: 100%; padding: 0.375rem 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; background: white; font-size: 0.875rem; }
-    .slider-row { display: flex; align-items: center; gap: 0.5rem; }
-    input[type=range] { flex: 1; }
-    .slider-val { font-size: 0.875rem; color: #6b7280; min-width: 2.5rem; }
-    .checkbox-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; margin-top: 0.25rem; }
-    .checkbox-row input { width: 1rem; height: 1rem; }
-    .actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; }
-
-    /* Buttons */
-    .btn { padding: 0.375rem 1rem; border-radius: 0.375rem; border: none; cursor: pointer; font-size: 0.875rem; font-weight: 500; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-green  { background: #16a34a; color: white; }
-    .btn-indigo { background: #4f46e5; color: white; }
-    .btn-purple { background: #9333ea; color: white; }
-    .btn-red    { background: #dc2626; color: white; }
-    .loading-msg { font-size: 0.875rem; color: #2563eb; font-weight: 500; }
-
-    /* YouTube Download */
-    .yt-controls { display: flex; flex-direction: column; gap: 0.5rem; }
-    .yt-row { display: flex; gap: 0.5rem; align-items: center; }
-    .yt-row input[type=text], .yt-row input[type=number] { padding: 0.375rem 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; }
-    .yt-row input[type=text] { flex: 1; }
-    .yt-row input[type=number] { width: 5rem; }
-
-    /* Training */
-    .train-controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
-    .alpha-label { font-size: 0.875rem; color: #374151; white-space: nowrap; }
-    #alpha-slider { width: 10rem; }
-    .status { font-size: 0.875rem; font-weight: 500; }
-    .status-ok   { color: #16a34a; }
-    .status-warn { color: #d97706; }
-    .status-err  { color: #dc2626; }
-    #train-log { font-family: monospace; font-size: 0.75rem; background: #f9fafb; border-radius: 0.375rem; padding: 0.75rem; max-height: 8rem; overflow-y: auto; border: 1px solid #e5e7eb; }
-  </style>
-</head>
-<body>
-<div class="container">
-  <header>
-    <h1>FLUENT Label Manager</h1>
-    <p class="subtitle">Audio to Sensitivity Mapping</p>
-  </header>
-
-  <div class="card">
-    <h2 style="font-size:1rem;font-weight:500;margin-bottom:1rem;">Add from YouTube / Audio Link</h2>
-    <div class="yt-controls">
-      <div class="yt-row">
-        <input type="text" id="yt-url" placeholder="https://www.youtube.com/watch?v=...">
-      </div>
-      <div class="yt-row">
-        <label>Start (s): <input type="number" id="yt-start" min="0"></label>
-        <label>Duration (s): <input type="number" id="yt-duration" min="1"></label>
-        <button class="btn btn-indigo" id="yt-btn" onclick="downloadYouTube()">Download & Add</button>
-        <span id="yt-status" class="status" style="margin-left:auto;"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2 style="font-size:1rem;font-weight:500;margin-bottom:1rem;">Segments</h2>
-    <div class="segment-list" id="segment-list"></div>
-    <div class="legend">
-      <span><span class="dot dot-unlabeled"></span>unlabeled</span>
-      <span><span class="dot dot-pending"></span>pending</span>
-      <span><span class="dot dot-trained"></span>trained</span>
-    </div>
+      .segment-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+      .segment-list[hidden] {
+        display: none !important;
+      }
+      .seg-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.375rem;
+        border: 1px solid #d1d5db;
+        background: #f9fafb;
+        cursor: pointer;
+        font-size: 0.875rem;
+      }
+      .seg-btn:hover {
+        background: #e5e7eb;
+      }
+      .seg-btn.active {
+        background: #3b82f6;
+        color: white;
+        border-color: #2563eb;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: inline-block;
+      }
+      .dot-unlabeled {
+        background: #9ca3af;
+      }
+      .dot-pending {
+        background: #facc15;
+      }
+      .dot-trained {
+        background: #22c55e;
+      }
+      .legend {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.75rem;
+        color: #6b7280;
+      }
+      .legend span {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
 
       /* Label section */
       .divider {
@@ -222,6 +224,30 @@
         font-weight: 500;
       }
 
+      /* YouTube Download */
+      .yt-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .yt-row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      .yt-row input[type="text"],
+      .yt-row input[type="number"] {
+        padding: 0.375rem 0.5rem;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+      }
+      .yt-row input[type="text"] {
+        flex: 1;
+      }
+      .yt-row input[type="number"] {
+        width: 5rem;
+      }
+
       /* Training */
       .train-controls {
         display: flex;
@@ -269,6 +295,41 @@
         <h1>FLUENT Label Manager</h1>
         <p class="subtitle">Audio to Sensitivity Mapping</p>
       </header>
+
+      <div class="card">
+        <h2 style="font-size: 1rem; font-weight: 500; margin-bottom: 1rem">
+          Add from YouTube / Audio Link
+        </h2>
+        <div class="yt-controls">
+          <div class="yt-row">
+            <input
+              type="text"
+              id="yt-url"
+              placeholder="https://www.youtube.com/watch?v=..."
+            />
+          </div>
+          <div class="yt-row">
+            <label
+              >Start (s): <input type="number" id="yt-start" min="0"
+            /></label>
+            <label
+              >Duration (s): <input type="number" id="yt-duration" min="1"
+            /></label>
+            <button
+              class="btn btn-indigo"
+              id="yt-btn"
+              onclick="downloadYouTube()"
+            >
+              Download & Add
+            </button>
+            <span
+              id="yt-status"
+              class="status"
+              style="margin-left: auto"
+            ></span>
+          </div>
+        </div>
+      </div>
 
       <div class="card">
         <div class="random-section" style="margin-bottom: 1rem">
@@ -605,91 +666,197 @@
           list.style.display = "none";
           btn.textContent = "セグメント一覧 ▼";
         }
-      } else if (data.status === 'converged') {
-        setTrainStatus('Converged', 'ok')
-        appendLog(`epoch ${data.epoch}: loss = ${data.loss.toFixed(6)} (converged)`)
-      } else if (data.status === 'interrupted') {
-        setTrainStatus('Interrupted — model saved', 'warn')
-      } else if (data.epoch !== undefined) {
-        appendLog(`epoch ${data.epoch}: loss = ${data.loss.toFixed(6)}`)
       }
-    }
-  }
-}
 
-async function stopTraining() {
-  await api('POST', '/api/train/stop')
-}
+      async function selectSegment(id) {
+        currentSegment = id;
+        document.getElementById("segment-title").textContent =
+          `Now Labeling: ${id}`;
+        document.getElementById("player").src = `/data/segments/${id}.wav`;
+        document.getElementById("label-section").hidden = false;
+        document.getElementById("save-btn").disabled = false;
+        document.getElementById("suggest-btn").disabled = false;
+        renderSegments();
+        if (labelset.data[id]) {
+          setFormValues(decodeLabels(labelset.data[id]));
+        } else {
+          setFormValues(defaultValues());
+          await predict(true);
+        }
+      }
 
-async function downloadYouTube() {
-  const url = document.getElementById('yt-url').value;
-  const start = document.getElementById('yt-start').value;
-  const duration = document.getElementById('yt-duration').value;
+      async function saveLabels() {
+        setLoading(true);
+        try {
+          const flat = encodeLabels(getFormValues());
+          await api("POST", "/api/labels", {
+            id: currentSegment,
+            labels: flat,
+            cols: flat.length,
+          });
+          labelset.data[currentSegment] = flat;
+          renderSegments();
+        } finally {
+          setLoading(false);
+        }
+      }
 
-  if (!url) {
-    alert("Please enter a URL");
-    return;
-  }
+      async function predict(silent = false) {
+        if (!silent) setLoading(true);
+        try {
+          const res = await api("POST", "/api/predict", { id: currentSegment });
+          if (res.prediction) setFormValues(decodeLabels(res.prediction));
+        } catch (e) {
+          if (!silent) console.error(e);
+        } finally {
+          if (!silent) setLoading(false);
+        }
+      }
 
-  const btn = document.getElementById('yt-btn');
-  const status = document.getElementById('yt-status');
-  btn.disabled = true;
-  status.textContent = 'Downloading and extracting features...';
-  status.className = 'status status-warn';
+      // 学習を開始し、SSE ストリームで進捗を受け取る
+      async function trainModel() {
+        const alpha =
+          parseFloat(document.getElementById("alpha-slider").value) || 0.01;
+        document.getElementById("train-log").innerHTML = "";
+        document.getElementById("train-log").hidden = false;
+        document.getElementById("train-status").textContent = "";
+        document.getElementById("train-status").className = "status";
+        document.getElementById("train-btn").disabled = true;
+        document.getElementById("stop-btn").hidden = false;
 
-  try {
-    const payload = { url };
-    if (start !== "") payload.start = parseInt(start);
-    if (duration !== "") payload.duration = parseInt(duration);
+        const res = await fetch("/api/train", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ alpha }),
+        });
 
-    await api('POST', '/api/youtube', payload);
+        if (!res.ok) {
+          const err = await res.json();
+          setTrainStatus(err.error, "err");
+          document.getElementById("train-btn").disabled = false;
+          document.getElementById("stop-btn").hidden = true;
+          return;
+        }
 
-    status.textContent = 'Success!';
-    status.className = 'status status-ok';
-    document.getElementById('yt-url').value = '';
+        // SSE メッセージは "\n\n" で区切られる。チャンクが分割されても正しく処理できるよう buf でバッファリングする
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
 
-    // Refresh segment list
-    segments = await api('GET', '/api/segments');
-    renderSegments();
-  } catch (e) {
-    status.textContent = 'Failed: ' + e.message;
-    status.className = 'status status-err';
-  } finally {
-    btn.disabled = false;
-  }
-}
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split("\n\n");
+          buf = parts.pop(); // 末尾の未完了メッセージを次のチャンクに持ち越す
+          for (const part of parts) {
+            const line = part.split("\n").find((l) => l.startsWith("data: "));
+            if (!line) continue;
+            let data;
+            try {
+              data = JSON.parse(line.slice(6));
+            } catch {
+              continue;
+            }
 
-function setTrainStatus(text, type) {
-  const el = document.getElementById('train-status')
-  el.textContent = text
-  el.className = `status status-${type}`
-}
+            if (data.status === "done") {
+              document.getElementById("train-btn").disabled = false;
+              document.getElementById("stop-btn").hidden = true;
+              if (data.success) {
+                setTrainStatus("Done", "ok");
+                const meta = await api("GET", "/api/train/meta");
+                trainedIds = meta.trained_ids || [];
+                renderSegments();
+              } else {
+                setTrainStatus("Failed", "err");
+              }
+            } else if (data.status === "converged") {
+              setTrainStatus("Converged", "ok");
+              appendLog(
+                `epoch ${data.epoch}: loss = ${data.loss.toFixed(6)} (converged)`,
+              );
+            } else if (data.status === "interrupted") {
+              setTrainStatus("Interrupted — model saved", "warn");
+            } else if (data.epoch !== undefined) {
+              appendLog(`epoch ${data.epoch}: loss = ${data.loss.toFixed(6)}`);
+            }
+          }
+        }
+      }
 
-function appendLog(text) {
-  const log = document.getElementById('train-log')
-  const div = document.createElement('div')
-  div.textContent = text
-  log.appendChild(div)
-  log.scrollTop = log.scrollHeight
-}
+      async function stopTraining() {
+        await api("POST", "/api/train/stop");
+      }
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-async function init() {
-  const [cfg, segs, lbls, meta] = await Promise.all([
-    api('GET', '/api/config'),
-    api('GET', '/api/segments'),
-    api('GET', '/api/labels'),
-    api('GET', '/api/train/meta'),
-  ])
-  config    = cfg
-  segments  = segs
-  labelset  = lbls
-  trainedIds = meta.trained_ids || []
-  renderSegments()
-  buildForm()
-}
+      async function downloadYouTube() {
+        const url = document.getElementById("yt-url").value;
+        const start = document.getElementById("yt-start").value;
+        const duration = document.getElementById("yt-duration").value;
 
-init()
-</script>
-</body>
+        if (!url) {
+          alert("Please enter a URL");
+          return;
+        }
+
+        const btn = document.getElementById("yt-btn");
+        const status = document.getElementById("yt-status");
+        btn.disabled = true;
+        status.textContent = "Downloading and extracting features...";
+        status.className = "status status-warn";
+
+        try {
+          const payload = { url };
+          if (start !== "") payload.start = parseInt(start);
+          if (duration !== "") payload.duration = parseInt(duration);
+
+          await api("POST", "/api/youtube", payload);
+
+          status.textContent = "Success!";
+          status.className = "status status-ok";
+          document.getElementById("yt-url").value = "";
+
+          // Refresh segment list
+          segments = await api("GET", "/api/segments");
+          renderSegments();
+        } catch (e) {
+          status.textContent = "Failed: " + e.message;
+          status.className = "status status-err";
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      function setTrainStatus(text, type) {
+        const el = document.getElementById("train-status");
+        el.textContent = text;
+        el.className = `status status-${type}`;
+      }
+
+      function appendLog(text) {
+        const log = document.getElementById("train-log");
+        const div = document.createElement("div");
+        div.textContent = text;
+        log.appendChild(div);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      // ─── Init ─────────────────────────────────────────────────────────────────────
+      async function init() {
+        const [cfg, segs, lbls, meta] = await Promise.all([
+          api("GET", "/api/config"),
+          api("GET", "/api/segments"),
+          api("GET", "/api/labels"),
+          api("GET", "/api/train/meta"),
+        ]);
+        config = cfg;
+        segments = segs;
+        labelset = lbls;
+        trainedIds = meta.trained_ids || [];
+        renderSegments();
+        buildForm();
+      }
+
+      init();
+    </script>
+  </body>
 </html>
