@@ -147,6 +147,37 @@ const spawnPython = (script, args = []) =>
     );
   });
 
+// YouTube などから音声の一部をダウンロードし、データセットを更新する
+app.post("/api/youtube", async (req, res) => {
+  const { url, start, duration } = req.body;
+  if (!url) return res.status(400).json({ error: "URL is required" });
+
+  try {
+    const dlArgs = ["--url", url, "--output", path.join(DATA_DIR, "segments")];
+    if (start !== undefined) {
+      dlArgs.push("--start", String(start));
+    }
+    if (duration !== undefined) {
+      dlArgs.push("--duration", String(duration));
+    }
+
+    // 1. YouTube等からダウンロードして segments/ に保存
+    await spawnPython("python/youtube_dl.py", dlArgs);
+
+    // 2. 特徴量抽出を実行して dataset.json と scaler.pkl を更新
+    await spawnPython("python/extractor.py", [
+      "--input",
+      path.join(DATA_DIR, "segments"),
+      "--output",
+      path.join(DATA_DIR, "dataset.json"),
+    ]);
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: "Download or extraction failed", details: e.message });
+  }
+});
+
 // 全セグメントを推論し、指定 ID の予測値を返す
 // モデルが存在しない場合は 500 ではなく { success: false, message: "model_not_found" } を返す
 app.post("/api/predict", async (req, res) => {
@@ -269,6 +300,72 @@ app.get("/api/train/meta", async (req, res) => {
   } catch {
     // ファイルが存在しない = まだ一度も学習していない
     res.json({ trained_at: null, trained_ids: [] });
+  }
+});
+
+// -----------------------------------------------------------
+// Tools API (Downloader & Segmenter)
+// -----------------------------------------------------------
+
+const TMP_DIR = path.join(DATA_DIR, "tmp");
+
+app.post("/api/tools/download", async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "URL is required" });
+  try {
+    await fs.mkdir(TMP_DIR, { recursive: true });
+    const { out } = await spawnPython("python/downloader_tool.py", [
+      "--url",
+      url,
+      "--out-dir",
+      TMP_DIR,
+    ]);
+    res.json(JSON.parse(out));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/tools/vad", async (req, res) => {
+  const { input } = req.body;
+  if (!input) return res.status(400).json({ error: "Input file is required" });
+  try {
+    const { out } = await spawnPython("python/vad_tool.py", ["--input", input]);
+    res.json(JSON.parse(out));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/tools/process", async (req, res) => {
+  const { input, title, regions } = req.body;
+  if (!input || !title || !regions)
+    return res.status(400).json({ error: "Missing required fields" });
+  try {
+    const outDir = path.join(DATA_DIR, "segments");
+    const { out } = await spawnPython("python/processor_tool.py", [
+      "--input",
+      input,
+      "--title",
+      title,
+      "--out-dir",
+      outDir,
+      "--regions",
+      JSON.stringify(regions),
+    ]);
+
+    // Process successful, update extractor features and fit scaler
+    const parsedOut = JSON.parse(out);
+    if (parsedOut.success) {
+      console.log("Audio processed successfully. Running feature extractor...");
+      spawnPython("python/extractor.py")
+        .then(() => console.log("Feature extractor completed."))
+        .catch(err => console.error("Feature extractor failed:", err));
+    }
+
+    res.json(parsedOut);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

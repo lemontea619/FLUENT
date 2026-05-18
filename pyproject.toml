@@ -8,7 +8,14 @@ dependencies = [
     "joblib>=1.5.3",
     "librosa>=0.11.0",
     "numpy>=2.4.4",
+    "pydub>=0.25.1",
     "scikit-learn>=1.8.0",
     "scipy>=1.17.1",
     "soundfile>=0.13.1",
+    "yt-dlp>=2026.3.17",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
 ]

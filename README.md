@@ -32,7 +32,10 @@ cd node && npm run dev
 1. `data/raw_audio/` に WAV を配置して特徴量抽出（自前素材を使う場合）
 
 ```bash
-uv run python python/segmenter.py
+# セグメント分割（--duration 2, 5, 10 などで粒度調整可能）
+uv run python python/segmenter.py --duration 2
+
+# 特徴量抽出（26次元物理特徴の生成）
 uv run python python/extractor.py
 ```
 

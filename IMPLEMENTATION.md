@@ -39,11 +39,17 @@ bash setup_all.sh
 独自の WAV を使う場合は `data/raw_audio/` に配置してから：
 
 ```bash
+# 2秒単位で分割（デフォルト、推奨）
 uv run python python/segmenter.py
+
+# 粒度を変更する場合（例: 5秒単位 / 10秒単位）
+uv run python python/segmenter.py --duration 5
+
+# 特徴量抽出（26次元）
 uv run python python/extractor.py
 ```
 
-`data/dataset.json`（A-MAP 形式、26次元）が生成される。
+`data/dataset.json`（A-MAP 形式、26次元）が生成される。分割粒度（duration）を変更した場合は、過去の `labelset.json` との ID 整合性が失われるため、再学習が必要です。
 
 ### Step 2: ラベリング UI 起動（Module C）
 
@@ -117,8 +123,16 @@ POST /api/train { resume: true }
 
 ### 特徴量の標準化（X）
 
-`extractor.py` は全セグメントの特徴量を一括で `StandardScaler`（平均0、標準偏差1）に変換してから `dataset.json` に書き出す。
-スケーラーのパラメータ（平均・分散）は `data/scaler.pkl` に joblib 形式で保存される。
+`extractor.py` は以下の 26 次元の物理特徴を抽出し、一括で `StandardScaler`（平均0、標準偏差1）に変換してから `dataset.json` に書き出します。
+
+| カテゴリ | 次元数 | 内容 |
+|---|---|---|
+| **MFCC** | 12 | メル周波数ケプストラム係数（第0係数除外） |
+| **Spectral** | 4 | Centroid, Flatness, Rolloff, Bandwidth |
+| **Theory** | 3 | Tempo(BPM), Key(0-11), Mode(0-1) |
+| **Chroma** | 7 | 色彩度（C, C#, D, D#, E, F, F#） |
+
+スケーラーのパラメータは `data/scaler.pkl` に保存されます。
 
 ```
 extractor.py → StandardScaler.fit_transform(全セグメント) → dataset.json（スケール済み）
@@ -128,8 +142,7 @@ extractor.py → StandardScaler.fit_transform(全セグメント) → dataset.js
 注意事項：
 - `dataset.json` に保存される特徴量はスケール済みの値である
 - 学習（`train.py`）は `dataset.json` をそのまま読み込むため、追加のスケール変換は不要
-- 新規セグメントを後から単体で予測する場合は `data/scaler.pkl` をロードして同じ変換を適用すること
-- 音源を追加して `extractor.py` を再実行すると scaler は再フィットされる。この場合は `model.pkl` も必ず再学習すること（スケール係数とモデルの不整合を防ぐため）
+- 新規セグメントを後から単体で予測する場合は `data/scaler.pkl` をロードして同じ変換を適用すること（スケール係数とモデルの不整合を防ぐため）
 
 ### 推論結果の正規化（Y）
 
