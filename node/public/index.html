@@ -388,6 +388,16 @@
             >
               Download & Add
             </button>
+            <span style="margin-left: 1rem; font-size: 0.875rem; display: none">
+              Vol:
+              <input
+                type="number"
+                id="yt-volume"
+                value="-12"
+                style="width: 3rem; padding: 2px"
+              />
+              dB
+            </span>
             <span
               id="yt-status"
               class="status"
@@ -771,7 +781,6 @@
           setFormValues(decodeLabels(labelset.data[id]));
         } else {
           setFormValues(defaultValues());
-          await predict(true);
         }
       }
 
@@ -887,6 +896,8 @@
         const url = document.getElementById("yt-url").value;
         const start = document.getElementById("yt-start").value;
         const duration = document.getElementById("yt-duration").value;
+        const volumeDb =
+          parseFloat(document.getElementById("yt-volume").value) || -12;
 
         if (!url) {
           alert("Please enter a URL");
@@ -903,6 +914,7 @@
           const payload = { url };
           if (start !== "") payload.start = parseInt(start);
           if (duration !== "") payload.duration = parseInt(duration);
+          payload.volumeDb = volumeDb;
 
           await api("POST", "/api/youtube", payload);
 
