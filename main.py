@@ -13,6 +13,38 @@ except ImportError:
     print("librosa または numpy がインストールされていません。")
     print("pip install librosa numpy を実行してください。")
 
+def estimate_key_and_chords(y, sr):
+    """楽曲全体の調と簡易的なコード進行を分析する"""
+    # クロマグラムの計算
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+    
+    # --- 調（Key）の推定 ---
+    # 各音（C, C#, ...）の平均エネルギー
+    chroma_avg = np.mean(chroma, axis=1)
+    keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    # 簡易的なメジャーキー判定
+    key_idx = np.argmax(chroma_avg)
+    estimated_key = keys[key_idx]
+    
+    # --- コード進行の推定（簡易版） ---
+    # 楽曲を8つの区間に分けて、それぞれの区間で最も強い音をルートとする
+    n_segments = 8
+    hop_size = chroma.shape[1] // n_segments
+    progression = []
+    for i in range(n_segments):
+        chunk = chroma[:, i*hop_size : (i+1)*hop_size]
+        if chunk.shape[1] == 0: continue
+        root_idx = np.argmax(np.mean(chunk, axis=1))
+        # 簡易的にメジャー/マイナーを判定（第3音の強さで比較）
+        third_major = (root_idx + 4) % 12
+        third_minor = (root_idx + 3) % 12
+        is_minor = np.mean(chunk[third_minor]) > np.mean(chunk[third_major])
+        chord = keys[root_idx] + ("m" if is_minor else "")
+        progression.append(chord)
+    
+    chord_str = " -> ".join(progression)
+    return estimated_key, chord_str
+
 def get_segments_from_chapters(url):
     """YouTubeのチャプター情報から1番の各セクションの時間を取得する"""
     cmd = ['yt-dlp', '--dump-json', '--flat-playlist', url]
@@ -160,11 +192,13 @@ def get_segments_via_librosa(audio_path):
     
     return found_segments
 
-def download_specific_sections(url, segments):
+def download_specific_sections(url, segments, key_info, chord_info):
     """指定されたセクションを個別にダウンロードする"""
+    # スクリプトの場所を基準に絶対パスを作成。どこから実行しても fluent/node/public/audio を指すようにします
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # サーバー(server.js)が管理するディレクトリ構造に合わせます
-    output_dir = os.path.join(script_dir, "data", "segments")
+    # server.js のデータディレクトリ構造に合わせます
+    data_dir = os.path.join(script_dir, "data")
+    output_dir = os.path.join(data_dir, "segments")
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -193,7 +227,7 @@ def download_specific_sections(url, segments):
     print("\n[STEP 1] YouTubeから音源をダウンロード中...")
     subprocess.run(['yt-dlp', '-x', '--audio-format', 'mp3', '-o', temp_source, url], check=True)
 
-    print("\n[STEP 2] 音声をセグメントに分割中...")
+    print("\n[STEP 2] 音声を分析・セグメントに分割中...")
 
     if not os.path.exists(temp_source):
         print("エラー: 音源のダウンロードに失敗しました。")
@@ -223,7 +257,9 @@ def download_specific_sections(url, segments):
         downloaded_info.append({
             "id": segment_id,
             "title": f"{label}: {info['title']}",
-            "file": file_name
+            "file": file_name,
+            "key": key_info,
+            "chords": chord_info
         })
     
     # 一時ファイルを削除
@@ -245,6 +281,29 @@ def download_specific_sections(url, segments):
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(all_segments, f, ensure_ascii=False, indent=2)
 
+    # [STEP 4] dataset.json を更新
+    dataset_path = os.path.join(data_dir, "dataset.json")
+    dataset = {}
+    if os.path.exists(dataset_path):
+        try:
+            with open(dataset_path, "r", encoding="utf-8") as f:
+                dataset = json.load(f)
+        except: pass
+    
+    if "data" not in dataset: dataset["data"] = {}
+    
+    for item in downloaded_info:
+        seg_id = item["id"]
+        if seg_id not in dataset["data"]:
+            dataset["data"][seg_id] = {}
+        # 調とコード進行を記録
+        dataset["data"][seg_id]["global_key"] = key_info
+        dataset["data"][seg_id]["global_chords"] = chord_info
+
+    with open(dataset_path, "w", encoding="utf-8") as f:
+        json.dump(dataset, f, ensure_ascii=False, indent=2)
+    print(f"[STEP 4] dataset.json に調とコードを記録しました。")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", help="YouTube URL")
@@ -255,7 +314,7 @@ def main():
     
     if not url.startswith(("http://", "https://")):
         print("エラー: 有効なURLを入力してください。")
-        print(f"現在の入力: {url[:50] if url else 'None'}...")
+        print(f"現在の入力: {url[:50]}...")
         return
 
     print("チャプターを解析中...")
@@ -264,7 +323,7 @@ def main():
     if not segments:
         print("チャプターが見つかりませんでした。音響解析に切り替えます。")
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        # server.js のデータディレクトリ構成に合わせます
+        # 一時的にフル音源をダウンロード
         data_dir = os.path.join(script_dir, "data")
         temp_full_audio = os.path.join(data_dir, "temp_analysis.mp3")
         os.makedirs(data_dir, exist_ok=True)
@@ -274,13 +333,21 @@ def main():
             print("エラー: メイン音声ファイルのダウンロードに失敗しました。URLを確認してください。")
             return
         
+        # 調とコード進行の分析（分割前に行う）
+        y_full, sr_full = librosa.load(temp_full_audio, duration=120)
+        key_info, chord_info = estimate_key_and_chords(y_full, sr_full)
+        print(f"分析結果 - 調: {key_info}, コード進行: {chord_info}")
+
         segments = get_segments_via_librosa(temp_full_audio)
         if os.path.exists(temp_full_audio):
             os.remove(temp_full_audio)
+    else:
+        # チャプターがある場合も同様に分析が必要な場合はここに追加
+        key_info, chord_info = "Unknown", "Unknown"
 
     if segments:
         print(f"{len(segments)} 個のセクションを特定しました。")
-        download_specific_sections(url, segments)
+        download_specific_sections(url, segments, key_info, chord_info)
         print("\n完了しました。")
     else:
         print("セグメントを特定できませんでした。")
