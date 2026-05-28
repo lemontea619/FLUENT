@@ -138,6 +138,7 @@ def segment_audio(
         #   フレーム数: 1,323,000 / 512 ≈ 2,586フレーム
         #   MFCC出力: (13, 2586)
         mfcc = librosa.feature.mfcc(y=y, sr=sr, hop_length=hop_length)
+        smoothed_features = mfcc
 
         # ============================================================
         # Step 5: セグメント数 k を自動決定
@@ -172,7 +173,8 @@ def segment_audio(
             #
             # 例）MFCC フレーム数が 2586、k=15 の場合
             #   → boundaries = [0, 1, 2, ..., 2, 1, 0, ...]（クラスタ割り当て）
-            boundaries = librosa.segment.agglomerative(smoothed_features, k)
+            cluster_labels = librosa.segment.agglomerative(smoothed_features, k)
+            boundaries = np.where(np.diff(cluster_labels) != 0)[0] + 1
 
             # ============================================================
             # Step 7: フレーム番号 → サンプル番号に変換
