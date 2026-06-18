@@ -1,0 +1,16 @@
+:root {
+  /* 背景・ベース */
+  --fluent-bg: #f7f8fa;
+  --fluent-main: #4a90e2;
+  --fluent-sub: #7ba7d9;
+
+  /* ボタン */
+  --fluent-button-bg: #4a90e2;
+  --fluent-button-text: #ffffff;
+  --fluent-button-sub-bg: #e6ebf2;
+  --fluent-button-sub-text: #4a4a4a;
+
+  /* テキスト */
+  --fluent-text-primary: #333333;
+  --fluent-text-secondary: #6e6e6e;
+}
