@@ -10,5 +10,8 @@
     "cors": "^2.8.6",
     "dotenv": "^16.5.0",
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
   }
 }

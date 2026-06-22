@@ -188,6 +188,9 @@
       let currentFile = null;
       let currentTitle = null;
       let audioUrl = null;
+      const subjectId = new URLSearchParams(window.location.search).get(
+        "subjectId",
+      );
 
       const el = {
         url: document.getElementById("url"),
@@ -252,7 +255,7 @@
           const res = await fetch("/api/tools/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, volumeDb }),
+            body: JSON.stringify({ url, volumeDb, subjectId }),
           });
           const data = await res.json();
           if (!res.ok || !data.success)

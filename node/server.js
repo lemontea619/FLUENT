@@ -136,6 +136,41 @@ app.get("/api/survey", async (req, res) => {
   }
 });
 
+// ダウンロード記録用ログのパス
+const DOWNLOAD_LOG_PATH = path.join(DATA_DIR, "download_log.json");
+
+const appendDownloadLog = async (entry) => {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    let logs = [];
+    try {
+      const raw = await fs.readFile(DOWNLOAD_LOG_PATH, "utf8");
+      logs = JSON.parse(raw);
+      if (!Array.isArray(logs)) logs = [];
+    } catch {
+      logs = [];
+    }
+    logs.push(entry);
+    await fs.writeFile(DOWNLOAD_LOG_PATH, JSON.stringify(logs, null, 2));
+  } catch (err) {
+    console.error("Failed to append download log:", err);
+  }
+};
+
+app.get("/api/downloads", async (req, res) => {
+  try {
+    const { subjectId } = req.query;
+    const raw = await fs.readFile(DOWNLOAD_LOG_PATH, "utf8");
+    const logs = JSON.parse(raw);
+    const filtered = subjectId
+      ? logs.filter((entry) => entry.subjectId === subjectId)
+      : logs;
+    res.json(filtered);
+  } catch {
+    res.json([]);
+  }
+});
+
 // ラベルを1件保存する。上書き前に data/backups/ へ自動バックアップを作成する
 app.post("/api/labels", async (req, res) => {
   const { subjectId, id, labels, cols, survey } = req.body;
@@ -207,7 +242,7 @@ const spawnPython = (script, args = []) =>
 
 // YouTube などから音声の一部をダウンロードし、データセットを更新する
 app.post("/api/youtube", async (req, res) => {
-  const { url, start, duration } = req.body;
+  const { url, start, duration, subjectId } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
 
   try {
@@ -234,6 +269,19 @@ app.post("/api/youtube", async (req, res) => {
       "--output",
       path.join(DATA_DIR, "dataset.json"),
     ]);
+
+    await appendDownloadLog({
+      type: "youtube",
+      subjectId: subjectId || null,
+      url,
+      start: start === undefined ? null : start,
+      duration: duration === undefined ? null : duration,
+      action:
+        start === undefined && duration === undefined
+          ? "auto_split"
+          : "range_download",
+      timestamp: new Date().toISOString(),
+    });
 
     res.json({ success: true });
   } catch (e) {
@@ -383,7 +431,7 @@ app.get("/api/train/meta", async (req, res) => {
 const TMP_DIR = path.join(DATA_DIR, "tmp");
 
 app.post("/api/tools/download", async (req, res) => {
-  const { url } = req.body;
+  const { url, subjectId, volumeDb } = req.body;
   if (!url) return res.status(400).json({ error: "URL is required" });
   try {
     await fs.mkdir(TMP_DIR, { recursive: true });
@@ -393,7 +441,19 @@ app.post("/api/tools/download", async (req, res) => {
       "--out-dir",
       TMP_DIR,
     ]);
-    res.json(JSON.parse(out));
+    const parsed = JSON.parse(out);
+    if (parsed.success) {
+      await appendDownloadLog({
+        type: "tool_download",
+        subjectId: subjectId || null,
+        url,
+        title: parsed.title || null,
+        file_path: parsed.file_path || null,
+        volumeDb: volumeDb === undefined ? null : volumeDb,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    res.json(parsed);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -442,4 +502,11 @@ app.post("/api/tools/process", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server listening on port ${PORT}`);
+});
+
+// すべてのルートで index.html を返す（Express v5 対応）
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
